@@ -8,6 +8,10 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.util.Log
 import android.widget.RemoteViews
 import com.rayo.karoo.ant.KarooLightControl
@@ -23,6 +27,7 @@ import io.hammerhead.karooext.models.DataPoint
 import io.hammerhead.karooext.models.DataType
 import io.hammerhead.karooext.models.Device
 import io.hammerhead.karooext.models.DeviceEvent
+import io.hammerhead.karooext.models.InRideAlert
 import io.hammerhead.karooext.models.OnBatteryStatus
 import io.hammerhead.karooext.models.OnConnectionStatus
 import io.hammerhead.karooext.models.OnDataPoint
@@ -54,8 +59,29 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         const val PREF_MAC = "paired_mac"
         const val PREF_AUTO_START = "auto_start_enabled"
         const val PREF_DEFAULT_PROFILE = "default_profile"
-        const val PREF_RADAR_THREAT = "radar_threat_enabled"
+
+        // ANT+ / Lezyne settings
         const val PREF_ANT_DEFAULT_MODE = "ant_default_mode"
+        const val PREF_RADAR_THREAT = "radar_threat_enabled"
+        const val PREF_RADAR_THREAT_YELLOW = "radar_threat_yellow"
+        const val PREF_RADAR_THREAT_RED = "radar_threat_red"
+        const val PREF_RADAR_HOLD_SEC = "radar_hold_sec"
+        const val PREF_SIMULATE_RADAR = "simulate_radar"
+
+        // G-Brake settings
+        const val PREF_BRAKE_ENABLED = "brake_enabled"
+        const val PREF_BRAKE_THRESHOLD = "brake_threshold"
+        const val PREF_BRAKE_MODE = "brake_mode"
+        const val PREF_BRAKE_HOLD_SEC = "brake_hold_sec"
+
+        // Speed Adaptive settings
+        const val PREF_SPEED_ADAPTIVE_ENABLED = "speed_adaptive_enabled"
+        const val PREF_SPEED_THRESHOLD = "speed_threshold"
+        const val PREF_SPEED_MODE = "speed_mode"
+
+        // Pause & Alert settings
+        const val PREF_PAUSE_BEHAVIOR = "pause_behavior"
+        const val PREF_IN_RIDE_ALERTS = "in_ride_alerts"
 
         // Extension Data Types
         const val TYPE_RAYO_CONTROL = "rayo_control"
@@ -99,12 +125,33 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
     val primaryAntLight: AntDeviceInfo?
         get() = synchronized(discoveredAntLights) { discoveredAntLights.firstOrNull() }
 
-    // Radar Threat State Management
+    // --- State variables ---
     var isRadarThreatActive: Boolean = false
         private set
+    var currentThreatLevel: Int = 0
+        private set
+
+    @Volatile var isBrakingActive: Boolean = false
+        private set
+
+    @Volatile var isSpeedAdaptiveActive: Boolean = false
+        private set
+
+    @Volatile var currentSpeedKmh: Float = 0f
+        private set
+
     private var preThreatMode: LightMode? = null
+    private var prePauseMode: LightMode? = null
     private var threatHoldJob: Job? = null
+    private var brakeHoldJob: Job? = null
+    private var radarSimulatorJob: Job? = null
+
     private var radarConsumerId: String? = null
+    private var speedConsumerId: String? = null
+
+    // G-Sensor Accelerometer
+    private var sensorManager: SensorManager? = null
+    private var accelListener: SensorEventListener? = null
 
     override val types by lazy {
         listOf(
@@ -130,8 +177,11 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             }
         }
 
-        // Connect to Karoo's SensorService for ANT+ lights
+        // Connect to Karoo SensorService for ANT+ lights
         karooLightControl.bind()
+
+        // Setup G-Sensor Accelerometer for G-Force Bremslicht
+        setupGForceBrakeSensor()
 
         // BLE Manager for Rayo
         bleManager = BleManager(this, object : BleManager.Listener {
@@ -168,17 +218,23 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 setupKarooConsumers()
             }
         }
+
+        // Start radar simulator if enabled in settings
+        if (prefs.getBoolean(PREF_SIMULATE_RADAR, false)) {
+            startRadarSimulation()
+        }
     }
 
     private fun setupKarooConsumers() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // 1. Ride State Consumer (Auto-Start / Auto-Stop for both Rayo & Lezyne Radar)
+        // 1. Ride State Consumer (Start, Pause, Resume, Idle)
         karooSystem.addConsumer<RideState> { rideState ->
             val autoStart = prefs.getBoolean(PREF_AUTO_START, true)
 
             when (rideState) {
                 is RideState.Recording -> {
+                    // Ride started or resumed!
                     if (autoStart) {
                         // Start Rayo
                         if (!bleManager.isConnected) {
@@ -191,29 +247,47 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                             bleManager.setLight(true)
                         }
 
-                        // Start Lezyne / ANT+ lights
+                        // Restore or start Lezyne / ANT+ lights
                         karooLightControl.bind()
-                        val defAntModeName = prefs.getString(PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
+                        val restoreModeName = prePauseMode?.karooName
+                            ?: prefs.getString(PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
                             ?: LightMode.DAY_FLASH.karooName
-                        synchronized(discoveredAntLights) {
-                            for (light in discoveredAntLights) {
-                                karooLightControl.setMode(light.id, defAntModeName)
-                            }
+
+                        prePauseMode = null
+                        setAntLightsMode(restoreModeName)
+                        showInRideAlert("Lichter: An", "Fahrt aktiv")
+                    }
+                }
+                is RideState.Paused -> {
+                    // Ride paused
+                    val pauseBehavior = prefs.getString(PREF_PAUSE_BEHAVIOR, "NONE") ?: "NONE"
+                    val primary = primaryAntLight
+                    if (primary != null) {
+                        val current = karooLightControl.actualModes.value[primary.id]
+                        prePauseMode = LightMode.fromKarooName(current)
+                    }
+
+                    when (pauseBehavior) {
+                        "LOW" -> {
+                            setAntLightsMode(LightMode.STEADY_LOW.karooName)
+                            showInRideAlert("Lichter: Sparmodus", "Fahrt pausiert")
                         }
+                        "OFF" -> {
+                            setAntLightsMode(LightMode.OFF.karooName)
+                            if (bleManager.isConnected) bleManager.setLight(false)
+                            showInRideAlert("Lichter: Aus", "Fahrt pausiert")
+                        }
+                        else -> {}
                     }
                 }
                 is RideState.Idle -> {
-                    // Stop Rayo
+                    // Ride ended! Turn off all lights
+                    prePauseMode = null
                     if (bleManager.isConnected) {
                         bleManager.setLight(false)
                     }
-
-                    // Stop Lezyne / ANT+ lights
-                    synchronized(discoveredAntLights) {
-                        for (light in discoveredAntLights) {
-                            karooLightControl.setMode(light.id, LightMode.OFF.karooName)
-                        }
-                    }
+                    setAntLightsMode(LightMode.OFF.karooName)
+                    showInRideAlert("Lichter: Aus", "Fahrt beendet")
                 }
                 else -> {}
             }
@@ -276,9 +350,123 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             updateAntBatteryStreams()
         }
 
-        // 3. Radar Threat Stream (Detect approaching vehicles & boost Lezyne light)
+        // 3. Radar Threat Stream
         startRadarMonitoring()
+
+        // 4. GPS Speed Stream for Speed-Adaptive Lighting
+        startSpeedMonitoring()
     }
+
+    // --- G-FORCE BRAKE LIGHT ACCELEROMETER ---
+
+    private fun setupGForceBrakeSensor() {
+        if (sensorManager == null) {
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        }
+        val accel = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return
+
+        accelListener = object : SensorEventListener {
+            private var lastY = 0f
+            private var continuousBrakeStartTime = 0L
+
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event == null || event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+                val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                if (!prefs.getBoolean(PREF_BRAKE_ENABLED, true)) return
+
+                val y = event.values[1]
+                val deltaY = y - lastY
+                lastY = y
+
+                // Y-axis negative acceleration represents longitudinal forward deceleration (braking)
+                val decelerationG = -deltaY / 9.81f
+                val thresholdG = prefs.getFloat(PREF_BRAKE_THRESHOLD, 0.20f)
+                val now = System.currentTimeMillis()
+
+                if (decelerationG >= thresholdG) {
+                    if (continuousBrakeStartTime == 0L) {
+                        continuousBrakeStartTime = now
+                    } else if (now - continuousBrakeStartTime >= 200L) { // 200ms continuous deceleration guard
+                        if (!isBrakingActive) {
+                            isBrakingActive = true
+                            Log.d(TAG, "G-Brake triggered! Deceleration=$decelerationG g")
+                            applyBrakeLight()
+                        }
+                        val holdSec = prefs.getInt(PREF_BRAKE_HOLD_SEC, 2)
+                        brakeHoldJob?.cancel()
+                        brakeHoldJob = scope.launch {
+                            delay(holdSec * 1000L)
+                            isBrakingActive = false
+                            continuousBrakeStartTime = 0L
+                            clearBrakeLight()
+                        }
+                    }
+                } else {
+                    if (!isBrakingActive) {
+                        continuousBrakeStartTime = 0L
+                    }
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        sensorManager?.registerListener(accelListener, accel, SensorManager.SENSOR_DELAY_GAME)
+    }
+
+    private fun applyBrakeLight() {
+        if (isRadarThreatActive) return // Radar threat takes priority
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val brakeMode = prefs.getString(PREF_BRAKE_MODE, LightMode.STEADY_HIGH.karooName)
+            ?: LightMode.STEADY_HIGH.karooName
+
+        setAntLightsMode(brakeMode)
+        updateAllAntDataFields()
+    }
+
+    private fun clearBrakeLight() {
+        if (isRadarThreatActive) return
+        restoreNormalAntMode()
+        updateAllAntDataFields()
+    }
+
+    // --- SPEED ADAPTIVE LIGHTING ---
+
+    private fun startSpeedMonitoring() {
+        if (speedConsumerId != null) return
+        speedConsumerId = karooSystem.addConsumer(
+            OnStreamState.StartStreaming(DataType.Type.SPEED)
+        ) { event: OnStreamState ->
+            if (event.state is StreamState.Streaming) {
+                val values = (event.state as StreamState.Streaming).dataPoint.values
+                val speedMs = values[DataType.Field.SPEED]?.toFloat() ?: 0f
+                currentSpeedKmh = speedMs * 3.6f
+                checkSpeedAdaptiveLighting()
+            }
+        }
+    }
+
+    private fun checkSpeedAdaptiveLighting() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(PREF_SPEED_ADAPTIVE_ENABLED, false)) return
+        if (isRadarThreatActive || isBrakingActive) return
+
+        val thresholdKmh = prefs.getInt(PREF_SPEED_THRESHOLD, 28)
+        val speedMode = prefs.getString(PREF_SPEED_MODE, LightMode.STEADY_HIGH.karooName)
+            ?: LightMode.STEADY_HIGH.karooName
+
+        if (currentSpeedKmh >= thresholdKmh && !isSpeedAdaptiveActive) {
+            isSpeedAdaptiveActive = true
+            setAntLightsMode(speedMode)
+            updateAllAntDataFields()
+        } else if (currentSpeedKmh < (thresholdKmh - 3) && isSpeedAdaptiveActive) {
+            isSpeedAdaptiveActive = false
+            restoreNormalAntMode()
+            updateAllAntDataFields()
+        }
+    }
+
+    // --- RADAR THREAT DETECTION ---
 
     private fun startRadarMonitoring() {
         if (radarConsumerId != null) return
@@ -293,9 +481,10 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         }
     }
 
-    private fun onRadarThreatLevel(threatLevel: Int) {
+    fun onRadarThreatLevel(threatLevel: Int) {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val threatReactionEnabled = prefs.getBoolean(PREF_RADAR_THREAT, true)
+        currentThreatLevel = threatLevel
 
         if (threatLevel > 0) {
             // Vehicle approaching!
@@ -313,12 +502,14 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 }
 
                 if (threatReactionEnabled) {
-                    // Activate high-visibility threat mode (Fast Flash or Day Flash)
-                    synchronized(discoveredAntLights) {
-                        for (light in discoveredAntLights) {
-                            karooLightControl.setMode(light.id, LightMode.FAST_FLASH.karooName)
-                        }
+                    val threatModeName = if (threatLevel >= 2) {
+                        prefs.getString(PREF_RADAR_THREAT_RED, LightMode.FAST_FLASH.karooName)
+                            ?: LightMode.FAST_FLASH.karooName
+                    } else {
+                        prefs.getString(PREF_RADAR_THREAT_YELLOW, LightMode.DAY_FLASH.karooName)
+                            ?: LightMode.DAY_FLASH.karooName
                     }
+                    setAntLightsMode(threatModeName)
                 }
                 updateAllAntDataFields()
             }
@@ -328,21 +519,119 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             if (!isRadarThreatActive) return
 
             threatHoldJob?.cancel()
+            val holdSec = prefs.getInt(PREF_RADAR_HOLD_SEC, 3)
             threatHoldJob = scope.launch {
-                delay(2500L) // 2.5s hold time to prevent flickering between multiple cars
+                delay(holdSec * 1000L)
                 if (!isRadarThreatActive) return@launch
 
                 isRadarThreatActive = false
-                val restoreMode = preThreatMode ?: LightMode.DAY_FLASH
+                currentThreatLevel = 0
                 if (threatReactionEnabled) {
-                    synchronized(discoveredAntLights) {
-                        for (light in discoveredAntLights) {
-                            karooLightControl.setMode(light.id, restoreMode.karooName)
-                        }
-                    }
+                    restoreNormalAntMode()
                 }
                 threatHoldJob = null
                 updateAllAntDataFields()
+            }
+        }
+    }
+
+    // --- RADAR SIMULATOR (INDOOR TESTING) ---
+
+    fun startRadarSimulation() {
+        if (radarSimulatorJob != null) return
+        radarSimulatorJob = scope.launch {
+            while (isActive) {
+                // Clear road (8s)
+                onRadarThreatLevel(0)
+                delay(8000L)
+                if (!isActive) break
+
+                // 1 Car approaching - Yellow Level 1 (10s)
+                onRadarThreatLevel(1)
+                delay(10000L)
+                if (!isActive) break
+
+                // Fast Overtaking Car - Red Level 2 (6s)
+                onRadarThreatLevel(2)
+                delay(6000L)
+                if (!isActive) break
+
+                // 1-second gap
+                onRadarThreatLevel(0)
+                delay(1200L)
+                if (!isActive) break
+
+                // Tailgater - Red Level 2 (8s)
+                onRadarThreatLevel(2)
+                delay(8000L)
+                if (!isActive) break
+
+                // Clear road (10s)
+                onRadarThreatLevel(0)
+                delay(10000L)
+            }
+        }
+    }
+
+    fun stopRadarSimulation() {
+        radarSimulatorJob?.cancel()
+        radarSimulatorJob = null
+        onRadarThreatLevel(0)
+    }
+
+    // --- HELPER: SET & RESTORE MODES ---
+
+    private fun setAntLightsMode(modeName: String) {
+        synchronized(discoveredAntLights) {
+            for (light in discoveredAntLights) {
+                karooLightControl.setMode(light.id, modeName)
+            }
+        }
+    }
+
+    private fun restoreNormalAntMode() {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val targetMode = if (isSpeedAdaptiveActive) {
+            prefs.getString(PREF_SPEED_MODE, LightMode.STEADY_HIGH.karooName)
+                ?: LightMode.STEADY_HIGH.karooName
+        } else {
+            preThreatMode?.karooName
+                ?: prefs.getString(PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
+                ?: LightMode.DAY_FLASH.karooName
+        }
+        setAntLightsMode(targetMode)
+    }
+
+    // --- IN-RIDE ALERTS ---
+
+    fun showInRideAlert(title: String, detail: String) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(PREF_IN_RIDE_ALERTS, true)) return
+
+        try {
+            karooSystem.dispatch(
+                InRideAlert(
+                    id = "rayo-alert",
+                    icon = R.drawable.ic_launcher,
+                    title = title,
+                    detail = detail,
+                    autoDismissMs = 3000,
+                    backgroundColor = android.R.color.black,
+                    textColor = android.R.color.white
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error dispatching InRideAlert", e)
+        }
+    }
+
+    override fun onBonusAction(actionId: String) {
+        when (actionId) {
+            "toggle-lights", "toggle-ant-light" -> {
+                toggleAntLight()
+            }
+            "toggle-rayo" -> {
+                toggleLight()
             }
         }
     }
@@ -375,6 +664,9 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         preThreatMode = nextMode
         karooLightControl.setMode(light.id, nextMode.karooName)
         updateAllAntDataFields()
+
+        val isGerman = Locale.getDefault().language.startsWith("de")
+        showInRideAlert("Lezyne: ${nextMode.getLocalizedName(isGerman)}", "Modus gewechselt")
     }
 
     fun toggleAntLight() {
@@ -382,8 +674,12 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val currentKarooMode = karooLightControl.actualModes.value[light.id]
         val currentMode = LightMode.fromKarooName(currentKarooMode)
 
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val isGerman = Locale.getDefault().language.startsWith("de")
+
         val targetMode = if (currentMode == LightMode.OFF) {
-            preThreatMode ?: LightMode.DAY_FLASH
+            val defName = prefs.getString(PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
+            LightMode.fromKarooName(defName)
         } else {
             preThreatMode = currentMode
             LightMode.OFF
@@ -391,6 +687,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
 
         karooLightControl.setMode(light.id, targetMode.karooName)
         updateAllAntDataFields()
+        showInRideAlert("Lezyne: ${targetMode.getLocalizedName(isGerman)}", if (targetMode == LightMode.OFF) "Ausgeschaltet" else "Eingeschaltet")
     }
 
     // --- RAYO BLE IN-RIDE ACTIONS ---
@@ -408,8 +705,10 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             bleManager.connect(prefs.getString(PREF_MAC, null))
             return
         }
-        bleManager.setLight(!bleManager.isLightOn)
+        val newState = !bleManager.isLightOn
+        bleManager.setLight(newState)
         updateAllRayoDataFields()
+        showInRideAlert("Rayo: " + (if (newState) "Licht AN" else "Licht AUS"), "Bluetooth")
     }
 
     fun cycleProfile() {
@@ -417,6 +716,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val next = (bleManager.currentMode + 1) % 4
         bleManager.selectProfile(next)
         updateAllRayoDataFields()
+        showInRideAlert("Rayo: Profil ${next + 1}", "Bluetooth")
     }
 
     // --- EMITTER REGISTRATION & UPDATES ---
@@ -533,7 +833,6 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val isGerman = Locale.getDefault().language.startsWith("de")
         val rv = RemoteViews(packageName, R.layout.view_rayo_datafield)
 
-        // 1. Toggle Button Pending Intent
         val toggleIntent = Intent(this, RayoActionReceiver::class.java).apply {
             action = ACTION_TOGGLE_LIGHT
         }
@@ -556,7 +855,6 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             rv.setTextColor(R.id.btnToggleLight, Color.parseColor("#FF2A55"))
         }
 
-        // 2. Profile Cycle Button Pending Intent
         val cycleIntent = Intent(this, RayoActionReceiver::class.java).apply {
             action = ACTION_CYCLE_PROFILE
         }
@@ -570,7 +868,6 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val profilePrefix = if (isGerman) "PROFIL" else "PROFILE"
         rv.setTextViewText(R.id.btnCycleProfile, "$profilePrefix ${bleManager.currentMode + 1}")
 
-        // 3. Battery Text
         val batText = if (bleManager.batteryPercent >= 0) "${bleManager.batteryPercent}%" else "--%"
         rv.setTextViewText(R.id.tvBatteryField, batText)
 
@@ -584,28 +881,35 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val rv = RemoteViews(packageName, R.layout.view_ant_light_datafield)
 
         val light = primaryAntLight
-        val connState = light?.let { karooLightControl.connectionStates.value[it.id] }
-        val isConnected = light != null && (connState == "CONNECTED" || connState == null)
-
-        // Set device name
         val lightName = light?.name?.uppercase() ?: if (isGerman) "LEZYNE RADAR" else "LEZYNE RADAR"
         rv.setTextViewText(R.id.tvAntLightName, lightName)
 
-        // Radar Threat Status Badge
-        if (isRadarThreatActive) {
-            rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "FAHRZEUG!" else "VEHICLE!")
+        // Status Badge Logic (Priority: Braking > Radar Threat > Speed Adaptive > Radar Clear)
+        if (isBrakingActive) {
+            rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "BREMSE!" else "BRAKE!")
             rv.setTextColor(R.id.tvAntRadarStatus, Color.parseColor("#FF2A55"))
+        } else if (isRadarThreatActive) {
+            if (currentThreatLevel >= 2) {
+                rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "FAHRZEUG (SCHNELL)!" else "FAST CAR!")
+                rv.setTextColor(R.id.tvAntRadarStatus, Color.parseColor("#FF2A55"))
+            } else {
+                rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "FAHRZEUG!" else "VEHICLE!")
+                rv.setTextColor(R.id.tvAntRadarStatus, Color.parseColor("#FFAA00"))
+            }
+        } else if (isSpeedAdaptiveActive) {
+            rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "TEMPO-BOOST" else "SPEED BOOST")
+            rv.setTextColor(R.id.tvAntRadarStatus, Color.parseColor("#3875F6"))
         } else {
             rv.setTextViewText(R.id.tvAntRadarStatus, if (isGerman) "RADAR FREI" else "RADAR CLEAR")
             rv.setTextColor(R.id.tvAntRadarStatus, Color.parseColor("#00E676"))
         }
 
-        // Battery text
+        // Battery
         val batVal = light?.batteryPercent
         val batText = if (batVal != null) "$batVal%" else "--%"
         rv.setTextViewText(R.id.tvAntBatteryField, batText)
 
-        // Mode Cycle Button Pending Intent
+        // Mode cycle button
         val cycleIntent = Intent(this, RayoActionReceiver::class.java).apply {
             action = ACTION_CYCLE_ANT_MODE
         }
@@ -617,7 +921,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         )
         rv.setOnClickPendingIntent(R.id.btnAntCycleMode, pCycle)
 
-        // Quick Toggle Button Pending Intent
+        // Power toggle button
         val toggleIntent = Intent(this, RayoActionReceiver::class.java).apply {
             action = ACTION_TOGGLE_ANT_LIGHT
         }
@@ -654,7 +958,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         emitter.updateView(rv)
     }
 
-    // --- KAROO SENSOR SCANNER FOR RAYO BLE ---
+    // --- SCANNER FOR NATIVE KAROO SENSORS MENU ---
 
     override fun startScan(emitter: Emitter<Device>) {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: return
@@ -778,6 +1082,10 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
     }
 
     override fun onDestroy() {
+        stopRadarSimulation()
+        accelListener?.let { sensorManager?.unregisterListener(it) }
+        radarConsumerId?.let { karooSystem.removeConsumer(it) }
+        speedConsumerId?.let { karooSystem.removeConsumer(it) }
         scope.cancel()
         bleManager.disconnect()
         karooLightControl.unbind()

@@ -11,7 +11,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Title Header -->
+        <!-- Header -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -44,7 +44,7 @@
             android:layout_marginTop="8dp"
             android:background="@color/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="14dp">
 
             <TextView
                 android:id="@+id/tvPairedStatus"
@@ -67,17 +67,17 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="10dp"
                 android:text="@string/default_profile_title"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <Spinner
                 android:id="@+id/spnDefaultProfile"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="2dp" />
 
             <Button
                 android:id="@+id/btnTestToggle"
@@ -105,7 +105,7 @@
             android:layout_marginTop="8dp"
             android:background="@color/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="14dp">
 
             <TextView
                 android:id="@+id/tvAntDeviceStatus"
@@ -116,11 +116,53 @@
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/ant_default_mode_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnAntDefaultMode"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <Button
+                android:id="@+id/btnTestAntToggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:backgroundTint="#3875F6"
+                android:text="@string/test_ant_toggle"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
+        <!-- 3. RADAR THREAT REACTION SECTION -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/section_radar"
+            android:textColor="#00E676"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp">
+
             <Switch
                 android:id="@+id/swRadarThreat"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
                 android:checked="true"
                 android:text="@string/radar_threat_title"
                 android:textColor="@color/text_primary"
@@ -135,39 +177,251 @@
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
 
+            <!-- Yellow Threat Mode -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:text="@string/ant_default_mode_title"
+                android:layout_marginTop="10dp"
+                android:text="@string/radar_threat_yellow_title"
                 android:textColor="@color/text_secondary"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <Spinner
-                android:id="@+id/spnAntDefaultMode"
+                android:id="@+id/spnRadarYellowMode"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:layout_marginTop="4dp" />
+                android:layout_marginTop="2dp" />
 
-            <Button
-                android:id="@+id/btnTestAntToggle"
-                android:layout_width="match_parent"
+            <!-- Red Threat Mode -->
+            <TextView
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:backgroundTint="#3875F6"
-                android:text="@string/test_ant_toggle"
-                android:textColor="#FFFFFF" />
+                android:text="@string/radar_threat_red_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnRadarRedMode"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- Radar Hold Time -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/radar_hold_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnRadarHoldSec"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- Radar Simulator -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="12dp"
+                android:background="#282A33" />
+
+            <Switch
+                android:id="@+id/swRadarSim"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/radar_sim_title"
+                android:textColor="#FFAA00"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/radar_sim_desc"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- 3. RIDE AUTOMATION (AUTO ON / OFF) -->
+        <!-- 4. G-FORCE BRAKE LIGHT SECTION -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/section_brake"
+            android:textColor="#FF2A55"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:background="@color/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="14dp">
+
+            <Switch
+                android:id="@+id/swBrakeEnabled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="@string/brake_title"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/brake_desc"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <!-- Sensitivity -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/brake_sensitivity_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnBrakeSensitivity"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- Brake Mode -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/brake_mode_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnBrakeMode"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- Brake Hold Time -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/brake_hold_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnBrakeHoldSec"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <!-- 5. SPEED-ADAPTIVE LIGHTING SECTION -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/section_speed"
+            android:textColor="#9C27B0"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <Switch
+                android:id="@+id/swSpeedAdaptive"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="@string/speed_adaptive_title"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/speed_adaptive_desc"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <!-- Speed Threshold -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/speed_threshold_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnSpeedThreshold"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- Speed Mode -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/speed_mode_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnSpeedMode"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <!-- 6. RIDE AUTOMATION & PAUSE SECTION -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/section_automation"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@color/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp">
 
             <Switch
                 android:id="@+id/swAutoStart"
@@ -182,8 +436,44 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="2dp"
                 android:text="@string/auto_start_desc"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp" />
+
+            <!-- Pause Behavior -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/pause_behavior_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <Spinner
+                android:id="@+id/spnPauseBehavior"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="2dp" />
+
+            <!-- In-Ride Alerts -->
+            <Switch
+                android:id="@+id/swInRideAlerts"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:checked="true"
+                android:text="@string/in_ride_alerts_title"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/in_ride_alerts_desc"
                 android:textColor="@color/text_secondary"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -194,7 +484,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="32dp"
             android:fontFamily="monospace"
             android:textColor="@color/accent_green"
             android:textSize="11sp" />

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rayo &amp; Radar Licht</string>
-    <string name="extension_description">Steuerung des Hauteworks Rayo und Lezyne / ANT+ Radar-Rücklichter auf dem Karoo</string>
+    <string name="extension_description">Intelligente Licht- &amp; Radar-Cockpit-Steuerung für Rayo und Lezyne / ANT+ Lichter</string>
 
     <!-- Rayo BLE Strings -->
     <string name="datatype_control_name">Rayo Steuerung</string>
@@ -11,28 +11,61 @@
 
     <!-- ANT+ / Lezyne Radar Strings -->
     <string name="datatype_ant_control_name">Lezyne / ANT+ Steuerung</string>
-    <string name="datatype_ant_control_desc">Interaktives Datenfeld für Lezyne Radar &amp; ANT+ Lichter mit Modus-Wechsel und Radarwarnung</string>
+    <string name="datatype_ant_control_desc">Interaktives Datenfeld mit Modus-Wechsel, Radarwarnung, Bremslicht &amp; Tempo-Automatik</string>
     <string name="datatype_ant_battery_name">Lezyne / ANT+ Akku</string>
     <string name="datatype_ant_battery_desc">Echtzeit-Akkustand des Lezyne Radar / ANT+ Lichts in %</string>
 
-    <!-- Settings UI Strings -->
-    <string name="settings_title">Licht- &amp; Radar-Einstellungen</string>
+    <!-- Section Titles -->
+    <string name="settings_title">Licht- &amp; Radar-Cockpit</string>
     <string name="section_rayo">Hauteworks Rayo (Bluetooth)</string>
     <string name="section_ant">Lezyne Radar / ANT+ Lichter</string>
+    <string name="section_radar">Radar-Warnreaktion (Threat Mode)</string>
+    <string name="section_brake">G-Force Bremslicht (Beschleunigungssensor)</string>
+    <string name="section_speed">Geschwindigkeits-Automatik (Speed-Adaptive)</string>
+    <string name="section_automation">Fahrt-Automatik &amp; Pause</string>
+
+    <!-- Rayo Settings -->
     <string name="paired_device_format">Gekoppeltes Licht: %s</string>
     <string name="not_paired">Kein Rayo gekoppelt</string>
     <string name="btn_scan_pair">Rayo suchen &amp; koppeln</string>
-    <string name="auto_start_title">Fahrt-Automatik</string>
-    <string name="auto_start_desc">Lichter automatisch bei Fahrtbeginn einschalten und bei Fahrtende ausschalten</string>
-    <string name="radar_threat_title">Radar-Reaktion</string>
-    <string name="radar_threat_desc">Lezyne-Licht automatisch warnblinken/verstärken, wenn sich von hinten ein Fahrzeug nähert</string>
     <string name="default_profile_title">Rayo Standard-Profil</string>
-    <string name="ant_default_mode_title">Lezyne Standard-Modus</string>
     <string name="test_connection">Rayo-Schalter testen</string>
-    <string name="test_ant_toggle">Lezyne-Schalter testen</string>
     <string name="status_scanning">Scanne nach Rayo…</string>
     <string name="status_paired">Rayo erfolgreich gekoppelt!</string>
     <string name="status_not_found">Kein Rayo gefunden. Bitte Licht einschalten.</string>
+
+    <!-- ANT+ / Lezyne Settings -->
     <string name="ant_lights_discovered">Erkannte ANT+ Lichter: %d</string>
     <string name="no_ant_lights">Kein ANT+ Licht gefunden. Bitte Lezyne zuerst in den Karoo-Sensoren koppeln!</string>
+    <string name="ant_default_mode_title">Primärer Fahrmodus</string>
+    <string name="test_ant_toggle">Lezyne-Schalter testen</string>
+
+    <!-- Radar Threat Settings -->
+    <string name="radar_threat_title">Radar-Reaktion (Warnblinken)</string>
+    <string name="radar_threat_desc">Lampe verstärken oder warnblinken, wenn sich Fahrzeuge von hinten nähern</string>
+    <string name="radar_threat_yellow_title">Modus bei gelber Warnung (Fahrzeug nähert sich)</string>
+    <string name="radar_threat_red_title">Modus bei roter Warnung (Schnelles Fahrzeug / Kolonne)</string>
+    <string name="radar_hold_title">Radar Haltezeit nach Überholvorgang</string>
+    <string name="radar_sim_title">🧪 Radar-Simulator (Indoor-Test)</string>
+    <string name="radar_sim_desc">Spielt eine Offline-Simulation herannahender Fahrzeuge ab, um das Warnblinken zu testen</string>
+
+    <!-- G-Brake Settings -->
+    <string name="brake_title">G-Force Automatik-Bremslicht</string>
+    <string name="brake_desc">Nutzt den Karoo-Beschleunigungssensor, um beim Abbremsen Bremslicht auszulösen</string>
+    <string name="brake_sensitivity_title">Brems-Empfindlichkeit</string>
+    <string name="brake_mode_title">Bremslicht-Modus</string>
+    <string name="brake_hold_title">Bremslicht-Haltezeit</string>
+
+    <!-- Speed Adaptive Settings -->
+    <string name="speed_adaptive_title">Geschwindigkeitsabhängiges Licht</string>
+    <string name="speed_adaptive_desc">Schaltet bei schnellen Abfahrten automatisch auf einen helleren Modus</string>
+    <string name="speed_threshold_title">Tempo-Schwelle (km/h)</string>
+    <string name="speed_mode_title">Modus bei hoher Geschwindigkeit</string>
+
+    <!-- Ride Automation Settings -->
+    <string name="auto_start_title">Fahrt-Automatik (Start / Stop)</string>
+    <string name="auto_start_desc">Lichter bei Fahrtbeginn automatisch einschalten und bei Fahrtende ausschalten</string>
+    <string name="pause_behavior_title">Verhalten bei Fahrtpause</string>
+    <string name="in_ride_alerts_title">Karoo Pop-up Banner anzeigen</string>
+    <string name="in_ride_alerts_desc">Kurze Benachrichtigung oben auf dem Display bei Modus-Wechsel anzeigen</string>
 </resources>

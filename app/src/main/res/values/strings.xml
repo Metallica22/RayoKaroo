@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rayo &amp; Radar Lights</string>
-    <string name="extension_description">Control Hauteworks Rayo and Lezyne / ANT+ Radar lights from your Karoo</string>
+    <string name="extension_description">Intelligent light &amp; radar cockpit controller for Rayo and Lezyne / ANT+ lights</string>
 
     <!-- Rayo BLE Strings -->
     <string name="datatype_control_name">Rayo Controller</string>
@@ -11,28 +11,61 @@
 
     <!-- ANT+ / Lezyne Radar Strings -->
     <string name="datatype_ant_control_name">Lezyne / ANT+ Controller</string>
-    <string name="datatype_ant_control_desc">Interactive in-ride button to cycle modes and display radar threat for Lezyne Radar &amp; ANT+ lights</string>
+    <string name="datatype_ant_control_desc">Interactive in-ride button with mode cycle, radar threat alerts, brake &amp; speed adaptive light</string>
     <string name="datatype_ant_battery_name">Lezyne / ANT+ Battery</string>
     <string name="datatype_ant_battery_desc">Live battery percentage of Lezyne Radar / ANT+ light</string>
 
-    <!-- Settings UI Strings -->
-    <string name="settings_title">Light &amp; Radar Settings</string>
+    <!-- Section Titles -->
+    <string name="settings_title">Light &amp; Radar Cockpit</string>
     <string name="section_rayo">Hauteworks Rayo (Bluetooth)</string>
     <string name="section_ant">Lezyne Radar / ANT+ Lights</string>
+    <string name="section_radar">Radar Threat Reaction</string>
+    <string name="section_brake">G-Force Smart Brake Light</string>
+    <string name="section_speed">Speed-Adaptive Lighting</string>
+    <string name="section_automation">Ride Automation &amp; Pause</string>
+
+    <!-- Rayo Settings -->
     <string name="paired_device_format">Paired Light: %s</string>
     <string name="not_paired">No Rayo light paired</string>
     <string name="btn_scan_pair">Scan &amp; Pair Rayo</string>
-    <string name="auto_start_title">Auto-start with ride</string>
-    <string name="auto_start_desc">Automatically turn on lights when ride starts, turn off when ride ends</string>
-    <string name="radar_threat_title">Radar Threat Mode</string>
-    <string name="radar_threat_desc">Flash or boost Lezyne light when a vehicle approaches from behind</string>
     <string name="default_profile_title">Rayo Default Profile</string>
-    <string name="ant_default_mode_title">Lezyne Default Mode</string>
     <string name="test_connection">Test Rayo Toggle</string>
-    <string name="test_ant_toggle">Test Lezyne Toggle</string>
     <string name="status_scanning">Scanning for Rayo…</string>
     <string name="status_paired">Rayo paired successfully!</string>
     <string name="status_not_found">No Rayo light found. Ensure light is on.</string>
+
+    <!-- ANT+ / Lezyne Settings -->
     <string name="ant_lights_discovered">Discovered ANT+ Lights: %d</string>
     <string name="no_ant_lights">No ANT+ lights found. Pair your Lezyne in Karoo Sensors first!</string>
+    <string name="ant_default_mode_title">Primary Ride Mode</string>
+    <string name="test_ant_toggle">Test Lezyne Toggle</string>
+
+    <!-- Radar Threat Settings -->
+    <string name="radar_threat_title">Radar Threat Warning</string>
+    <string name="radar_threat_desc">Flash or boost light when vehicles approach from behind</string>
+    <string name="radar_threat_yellow_title">Yellow Threat Mode (Vehicle Approaching)</string>
+    <string name="radar_threat_red_title">Red Threat Mode (High-Speed / Platoon)</string>
+    <string name="radar_hold_title">Threat Hold Time</string>
+    <string name="radar_sim_title">🧪 Radar Simulator (Indoor Testing)</string>
+    <string name="radar_sim_desc">Runs an offline simulation of approaching cars to test threat lighting</string>
+
+    <!-- G-Brake Settings -->
+    <string name="brake_title">G-Force Deceleration Brake Light</string>
+    <string name="brake_desc">Uses Karoo accelerometer to trigger brake light on deceleration</string>
+    <string name="brake_sensitivity_title">Brake Sensitivity</string>
+    <string name="brake_mode_title">Brake Light Mode</string>
+    <string name="brake_hold_title">Brake Hold Time</string>
+
+    <!-- Speed Adaptive Settings -->
+    <string name="speed_adaptive_title">Speed-Adaptive Lighting</string>
+    <string name="speed_adaptive_desc">Switches to high beam or high mode above speed threshold</string>
+    <string name="speed_threshold_title">Speed Threshold (km/h)</string>
+    <string name="speed_mode_title">High-Speed Mode</string>
+
+    <!-- Ride Automation Settings -->
+    <string name="auto_start_title">Auto-start with ride</string>
+    <string name="auto_start_desc">Turn on lights when ride starts, turn off when ride ends</string>
+    <string name="pause_behavior_title">Ride Pause Behavior</string>
+    <string name="in_ride_alerts_title">Show Karoo In-Ride Popups</string>
+    <string name="in_ride_alerts_desc">Display top banner on Karoo when light mode changes</string>
 </resources>

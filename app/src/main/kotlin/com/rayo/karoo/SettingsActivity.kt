@@ -23,20 +23,39 @@ import java.util.Locale
 @SuppressLint("MissingPermission")
 class SettingsActivity : AppCompatActivity() {
 
-    // Rayo BLE Views
+    // 1. Rayo BLE Views
     private lateinit var tvPairedStatus: TextView
     private lateinit var btnScanPair: Button
     private lateinit var spnDefaultProfile: Spinner
     private lateinit var btnTestToggle: Button
 
-    // ANT+ / Lezyne Views
+    // 2. ANT+ / Lezyne Views
     private lateinit var tvAntDeviceStatus: TextView
-    private lateinit var swRadarThreat: Switch
     private lateinit var spnAntDefaultMode: Spinner
     private lateinit var btnTestAntToggle: Button
 
-    // General Views
+    // 3. Radar Threat Views
+    private lateinit var swRadarThreat: Switch
+    private lateinit var spnRadarYellowMode: Spinner
+    private lateinit var spnRadarRedMode: Spinner
+    private lateinit var spnRadarHoldSec: Spinner
+    private lateinit var swRadarSim: Switch
+
+    // 4. G-Brake Views
+    private lateinit var swBrakeEnabled: Switch
+    private lateinit var spnBrakeSensitivity: Spinner
+    private lateinit var spnBrakeMode: Spinner
+    private lateinit var spnBrakeHoldSec: Spinner
+
+    // 5. Speed-Adaptive Views
+    private lateinit var swSpeedAdaptive: Switch
+    private lateinit var spnSpeedThreshold: Spinner
+    private lateinit var spnSpeedMode: Spinner
+
+    // 6. Automation Views
     private lateinit var swAutoStart: Switch
+    private lateinit var spnPauseBehavior: Spinner
+    private lateinit var swInRideAlerts: Switch
     private lateinit var tvSettingsLog: TextView
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
@@ -105,22 +124,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        // Bind Rayo Views
-        tvPairedStatus = findViewById(R.id.tvPairedStatus)
-        btnScanPair = findViewById(R.id.btnScanPair)
-        spnDefaultProfile = findViewById(R.id.spnDefaultProfile)
-        btnTestToggle = findViewById(R.id.btnTestToggle)
-
-        // Bind ANT+ Views
-        tvAntDeviceStatus = findViewById(R.id.tvAntDeviceStatus)
-        swRadarThreat = findViewById(R.id.swRadarThreat)
-        spnAntDefaultMode = findViewById(R.id.spnAntDefaultMode)
-        btnTestAntToggle = findViewById(R.id.btnTestAntToggle)
-
-        // Bind General Views
-        swAutoStart = findViewById(R.id.swAutoStart)
-        tvSettingsLog = findViewById(R.id.tvSettingsLog)
-
+        bindViews()
         checkPermissions()
         loadPreferences()
 
@@ -131,61 +135,186 @@ class SettingsActivity : AppCompatActivity() {
             Log.e("SettingsActivity", "Error starting RayoExtension service", e)
         }
 
-        // Rayo Profile spinner setup
-        val profiles = arrayOf("Profil 1", "Profil 2", "Profil 3", "Profil 4")
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, profiles)
-        spnDefaultProfile.adapter = adapter
+        setupSpinnersAndSwitches()
+        setupClickListeners()
+    }
+
+    private fun bindViews() {
+        tvPairedStatus = findViewById(R.id.tvPairedStatus)
+        btnScanPair = findViewById(R.id.btnScanPair)
+        spnDefaultProfile = findViewById(R.id.spnDefaultProfile)
+        btnTestToggle = findViewById(R.id.btnTestToggle)
+
+        tvAntDeviceStatus = findViewById(R.id.tvAntDeviceStatus)
+        spnAntDefaultMode = findViewById(R.id.spnAntDefaultMode)
+        btnTestAntToggle = findViewById(R.id.btnTestAntToggle)
+
+        swRadarThreat = findViewById(R.id.swRadarThreat)
+        spnRadarYellowMode = findViewById(R.id.spnRadarYellowMode)
+        spnRadarRedMode = findViewById(R.id.spnRadarRedMode)
+        spnRadarHoldSec = findViewById(R.id.spnRadarHoldSec)
+        swRadarSim = findViewById(R.id.swRadarSim)
+
+        swBrakeEnabled = findViewById(R.id.swBrakeEnabled)
+        spnBrakeSensitivity = findViewById(R.id.spnBrakeSensitivity)
+        spnBrakeMode = findViewById(R.id.spnBrakeMode)
+        spnBrakeHoldSec = findViewById(R.id.spnBrakeHoldSec)
+
+        swSpeedAdaptive = findViewById(R.id.swSpeedAdaptive)
+        spnSpeedThreshold = findViewById(R.id.spnSpeedThreshold)
+        spnSpeedMode = findViewById(R.id.spnSpeedMode)
+
+        swAutoStart = findViewById(R.id.swAutoStart)
+        spnPauseBehavior = findViewById(R.id.spnPauseBehavior)
+        swInRideAlerts = findViewById(R.id.swInRideAlerts)
+        tvSettingsLog = findViewById(R.id.tvSettingsLog)
+    }
+
+    private fun setupSpinnersAndSwitches() {
         val prefs = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE)
-        spnDefaultProfile.setSelection(prefs.getInt(RayoExtension.PREF_DEFAULT_PROFILE, 0))
-
-        spnDefaultProfile.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                prefs.edit().putInt(RayoExtension.PREF_DEFAULT_PROFILE, position).apply()
-                RayoExtension.instance?.bleManager?.let { bm ->
-                    if (bm.isConnected && bm.currentMode != position) {
-                        bm.selectProfile(position)
-                    }
-                }
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-
-        // ANT+ Default Mode spinner setup
         val isGerman = Locale.getDefault().language.startsWith("de")
         val antModeLabels = antModesList.map { it.getLocalizedName(isGerman) }
-        val antAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
-        spnAntDefaultMode.adapter = antAdapter
 
-        val savedAntMode = prefs.getString(RayoExtension.PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
-        val selectedIndex = antModesList.indexOfFirst { it.karooName == savedAntMode }.coerceAtLeast(0)
-        spnAntDefaultMode.setSelection(selectedIndex)
-
-        spnAntDefaultMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val mode = antModesList[position]
-                prefs.edit().putString(RayoExtension.PREF_ANT_DEFAULT_MODE, mode.karooName).apply()
+        // Rayo Profile
+        val profiles = arrayOf("Profil 1", "Profil 2", "Profil 3", "Profil 4")
+        spnDefaultProfile.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, profiles)
+        spnDefaultProfile.setSelection(prefs.getInt(RayoExtension.PREF_DEFAULT_PROFILE, 0))
+        spnDefaultProfile.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putInt(RayoExtension.PREF_DEFAULT_PROFILE, pos).apply()
+            RayoExtension.instance?.bleManager?.let { bm ->
+                if (bm.isConnected && bm.currentMode != pos) bm.selectProfile(pos)
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        // Radar Threat Reaction Switch
+        // ANT+ Primary Ride Mode
+        spnAntDefaultMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        val savedAntMode = prefs.getString(RayoExtension.PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
+        spnAntDefaultMode.setSelection(antModesList.indexOfFirst { it.karooName == savedAntMode }.coerceAtLeast(0))
+        spnAntDefaultMode.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_ANT_DEFAULT_MODE, antModesList[pos].karooName).apply()
+        }
+
+        // Radar Threat Yellow Mode
+        spnRadarYellowMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        val savedYellow = prefs.getString(RayoExtension.PREF_RADAR_THREAT_YELLOW, LightMode.DAY_FLASH.karooName)
+        spnRadarYellowMode.setSelection(antModesList.indexOfFirst { it.karooName == savedYellow }.coerceAtLeast(0))
+        spnRadarYellowMode.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_RADAR_THREAT_YELLOW, antModesList[pos].karooName).apply()
+        }
+
+        // Radar Threat Red Mode
+        spnRadarRedMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        val savedRed = prefs.getString(RayoExtension.PREF_RADAR_THREAT_RED, LightMode.FAST_FLASH.karooName)
+        spnRadarRedMode.setSelection(antModesList.indexOfFirst { it.karooName == savedRed }.coerceAtLeast(0))
+        spnRadarRedMode.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_RADAR_THREAT_RED, antModesList[pos].karooName).apply()
+        }
+
+        // Radar Hold Sec
+        val holdSecOptions = listOf(1, 2, 3, 5)
+        val holdSecLabels = holdSecOptions.map { "$it Sekunden" }
+        spnRadarHoldSec.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, holdSecLabels)
+        val savedHold = prefs.getInt(RayoExtension.PREF_RADAR_HOLD_SEC, 3)
+        spnRadarHoldSec.setSelection(holdSecOptions.indexOf(savedHold).coerceAtLeast(0))
+        spnRadarHoldSec.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putInt(RayoExtension.PREF_RADAR_HOLD_SEC, holdSecOptions[pos]).apply()
+        }
+
+        // Radar Simulator Switch
+        swRadarSim.isChecked = prefs.getBoolean(RayoExtension.PREF_SIMULATE_RADAR, false)
+        swRadarSim.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_SIMULATE_RADAR, isChecked).apply()
+            if (isChecked) {
+                RayoExtension.instance?.startRadarSimulation()
+                tvSettingsLog.text = "🧪 Radar-Simulator gestartet!"
+            } else {
+                RayoExtension.instance?.stopRadarSimulation()
+                tvSettingsLog.text = "Radar-Simulator beendet."
+            }
+        }
+
+        // G-Brake Sensitivity
+        val sensValues = listOf(0.15f, 0.20f, 0.30f, 0.40f)
+        val sensLabels = listOf("0.15 g (Sehr empfindlich)", "0.20 g (Normal / Empfohlen)", "0.30 g (Sportlich)", "0.40 g (Nur starkes Bremsen)")
+        spnBrakeSensitivity.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, sensLabels)
+        val savedSens = prefs.getFloat(RayoExtension.PREF_BRAKE_THRESHOLD, 0.20f)
+        spnBrakeSensitivity.setSelection(sensValues.indexOf(savedSens).coerceAtLeast(0))
+        spnBrakeSensitivity.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putFloat(RayoExtension.PREF_BRAKE_THRESHOLD, sensValues[pos]).apply()
+        }
+
+        // G-Brake Mode
+        spnBrakeMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        val savedBrakeMode = prefs.getString(RayoExtension.PREF_BRAKE_MODE, LightMode.STEADY_HIGH.karooName)
+        spnBrakeMode.setSelection(antModesList.indexOfFirst { it.karooName == savedBrakeMode }.coerceAtLeast(0))
+        spnBrakeMode.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_BRAKE_MODE, antModesList[pos].karooName).apply()
+        }
+
+        // G-Brake Hold Sec
+        val brakeHoldOptions = listOf(1, 2, 3, 5)
+        val brakeHoldLabels = brakeHoldOptions.map { "$it Sekunden" }
+        spnBrakeHoldSec.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, brakeHoldLabels)
+        val savedBrakeHold = prefs.getInt(RayoExtension.PREF_BRAKE_HOLD_SEC, 2)
+        spnBrakeHoldSec.setSelection(brakeHoldOptions.indexOf(savedBrakeHold).coerceAtLeast(0))
+        spnBrakeHoldSec.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putInt(RayoExtension.PREF_BRAKE_HOLD_SEC, brakeHoldOptions[pos]).apply()
+        }
+
+        // Speed Adaptive Threshold
+        val speedOptions = listOf(20, 25, 28, 30, 35)
+        val speedLabels = speedOptions.map { "Ab $it km/h" }
+        spnSpeedThreshold.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, speedLabels)
+        val savedSpeedThresh = prefs.getInt(RayoExtension.PREF_SPEED_THRESHOLD, 28)
+        spnSpeedThreshold.setSelection(speedOptions.indexOf(savedSpeedThresh).coerceAtLeast(0))
+        spnSpeedThreshold.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putInt(RayoExtension.PREF_SPEED_THRESHOLD, speedOptions[pos]).apply()
+        }
+
+        // Speed Adaptive Mode
+        spnSpeedMode.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        val savedSpeedMode = prefs.getString(RayoExtension.PREF_SPEED_MODE, LightMode.STEADY_HIGH.karooName)
+        spnSpeedMode.setSelection(antModesList.indexOfFirst { it.karooName == savedSpeedMode }.coerceAtLeast(0))
+        spnSpeedMode.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_SPEED_MODE, antModesList[pos].karooName).apply()
+        }
+
+        // Pause Behavior
+        val pauseKeys = listOf("NONE", "LOW", "OFF")
+        val pauseLabels = listOf("Licht unverändert anlassen", "Auf Sparmodus (Dauerlicht Spar) dimmen", "Licht komplett ausschalten")
+        spnPauseBehavior.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, pauseLabels)
+        val savedPause = prefs.getString(RayoExtension.PREF_PAUSE_BEHAVIOR, "NONE")
+        spnPauseBehavior.setSelection(pauseKeys.indexOf(savedPause).coerceAtLeast(0))
+        spnPauseBehavior.onItemSelectedListener = simpleSelectListener { pos ->
+            prefs.edit().putString(RayoExtension.PREF_PAUSE_BEHAVIOR, pauseKeys[pos]).apply()
+        }
+
+        // Switches
         swRadarThreat.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(RayoExtension.PREF_RADAR_THREAT, isChecked).apply()
-            tvSettingsLog.text = if (isChecked) "Radar-Reaktion aktiviert (Warnblinken bei Fahrzeugen)" else "Radar-Reaktion deaktiviert"
         }
-
-        // General Ride Auto-Start Switch
+        swBrakeEnabled.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_BRAKE_ENABLED, isChecked).apply()
+        }
+        swSpeedAdaptive.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_SPEED_ADAPTIVE_ENABLED, isChecked).apply()
+        }
         swAutoStart.setOnCheckedChangeListener { _, isChecked ->
             prefs.edit().putBoolean(RayoExtension.PREF_AUTO_START, isChecked).apply()
-            tvSettingsLog.text = if (isChecked) "Fahrt-Automatik AN" else "Fahrt-Automatik AUS"
         }
+        swInRideAlerts.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_IN_RIDE_ALERTS, isChecked).apply()
+        }
+    }
 
-        // Rayo Scan & Pair Button
+    private fun setupClickListeners() {
+        val prefs = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE)
+        val isGerman = Locale.getDefault().language.startsWith("de")
+
         btnScanPair.setOnClickListener {
             startPairingScan()
         }
 
-        // Rayo Test Toggle Button
         btnTestToggle.setOnClickListener {
             val ext = RayoExtension.instance
             if (ext == null) {
@@ -213,7 +342,6 @@ class SettingsActivity : AppCompatActivity() {
             updateTestButtonText(newState)
         }
 
-        // Lezyne / ANT+ Test Toggle Button
         btnTestAntToggle.setOnClickListener {
             val ext = RayoExtension.instance
             if (ext == null) {
@@ -234,6 +362,13 @@ class SettingsActivity : AppCompatActivity() {
             tvSettingsLog.text = "Lezyne: ${modeEnum.getLocalizedName(isGerman)}"
             updateAntStatus()
         }
+    }
+
+    private fun simpleSelectListener(action: (Int) -> Unit) = object : AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+            action(position)
+        }
+        override fun onNothingSelected(parent: AdapterView<*>?) {}
     }
 
     override fun onResume() {
@@ -266,7 +401,6 @@ class SettingsActivity : AppCompatActivity() {
         val primary = ext.primaryAntLight
 
         if (primary != null) {
-            val connState = ext.karooLightControl.connectionStates.value[primary.id] ?: "Verbunden"
             val currentKarooMode = ext.karooLightControl.actualModes.value[primary.id]
             val modeEnum = LightMode.fromKarooName(currentKarooMode)
             val batStr = if (primary.batteryPercent != null) " (${primary.batteryPercent}%)" else ""
@@ -313,8 +447,12 @@ class SettingsActivity : AppCompatActivity() {
             tvPairedStatus.text = getString(R.string.not_paired)
             tvPairedStatus.setTextColor(0xFFFFFFFF.toInt())
         }
-        swAutoStart.isChecked = prefs.getBoolean(RayoExtension.PREF_AUTO_START, true)
+
         swRadarThreat.isChecked = prefs.getBoolean(RayoExtension.PREF_RADAR_THREAT, true)
+        swBrakeEnabled.isChecked = prefs.getBoolean(RayoExtension.PREF_BRAKE_ENABLED, true)
+        swSpeedAdaptive.isChecked = prefs.getBoolean(RayoExtension.PREF_SPEED_ADAPTIVE_ENABLED, false)
+        swAutoStart.isChecked = prefs.getBoolean(RayoExtension.PREF_AUTO_START, true)
+        swInRideAlerts.isChecked = prefs.getBoolean(RayoExtension.PREF_IN_RIDE_ALERTS, true)
     }
 
     private fun startPairingScan() {
