@@ -36,7 +36,9 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         const val TYPE_RAYO_BATTERY = "rayo_battery"
     }
 
-    private lateinit var bleManager: BleManager
+    lateinit var bleManager: BleManager
+        private set
+
     private lateinit var karooSystem: KarooSystemService
     private val scope = CoroutineScope(Dispatchers.Main + Job())
 
@@ -116,6 +118,22 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedMac = prefs.getString(PREF_MAC, null)
+        if (!savedMac.isNullOrEmpty() && !bleManager.isConnected) {
+            bleManager.connect(savedMac)
+        }
+        return START_STICKY
+    }
+
+    fun connectBle(mac: String? = null) {
+        val targetMac = mac ?: getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_MAC, null)
+        if (!targetMac.isNullOrEmpty()) {
+            bleManager.connect(targetMac)
+        }
+    }
+
     fun toggleLight() {
         if (!bleManager.isConnected) {
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -159,7 +177,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         }
     }
 
-    private fun updateAllDataFields() {
+    fun updateAllDataFields() {
         synchronized(activeViewEmitters) {
             for (emitter in activeViewEmitters) {
                 emitDataField(emitter)
