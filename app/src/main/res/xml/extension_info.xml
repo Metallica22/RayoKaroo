@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionInfo
+    id="rayo"
+    displayName="@string/app_name"
+    description="@string/extension_description"
+    icon="@drawable/ic_launcher"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <DataType
+        typeId="rayo_control"
+        displayName="@string/datatype_control_name"
+        description="@string/datatype_control_desc"
+        graphical="true" />
+
+    <DataType
+        typeId="rayo_battery"
+        displayName="@string/datatype_battery_name"
+        description="@string/datatype_battery_desc"
+        graphical="false" />
+
+</ExtensionInfo>
