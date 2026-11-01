@@ -12,16 +12,23 @@
 
 ## ✨ Features
 
-- **📱 Interactive In-Ride Data Field:**  
-  Add the **Rayo Controller** widget directly to any of your Karoo ride screens.
-  - **One-Tap Light Toggle:** Turn the light ON or OFF with a single tap on the Karoo screen.
-  - **Profile Switcher:** Tap to cycle through the 4 mode profiles (*Pulse*, *Blink*, *Wave*, *Strobe*) on the fly.
-  - **Live Battery Indicator:** Real-time battery percentage readout (e.g. `85%`) right next to your speed and cadence metrics.
+- **📱 Interactive In-Ride Data Fields (Dedicated widget per light):**  
+  - **Rayo Controller Widget:**
+    - **One-Tap Light Toggle:** Turn the Rayo light ON or OFF with a single tap on the Karoo screen.
+    - **Profile Switcher:** Cycle through the 4 mode profiles (*Pulse*, *Blink*, *Wave*, *Strobe*) on the fly.
+    - **Live Battery Indicator:** Real-time battery percentage readout (e.g. `85%`).
+  - **Lezyne / ANT+ Radar Controller Widget:**
+    - **Mode Switcher Button:** Tap to cycle modes with German localization (*Tagfahrlicht*, *Dauerlicht Hell*, *Dauerlicht Mittel*, *Blinken Schnell*, *Aus*).
+    - **Radar Threat Warning Badge:** Real-time alert indicator (`RADAR FREI` in green or `FAHRZEUG!` in red).
+    - **Quick Power Toggle:** One-tap button to turn light ON / OFF.
+- **🚗 Smart Radar Threat Mode:**  
+  - When an approaching vehicle is detected from behind, the Lezyne light automatically boosts or switches to fast flash to alert traffic.
+  - Automatically restores your normal light mode after the vehicle has passed.
 - **🚀 Smart Ride Automation (Auto-Start / Auto-Stop):**  
-  - When you press **„Start Ride“** on your Karoo, your Rayo light powers on automatically with your preferred profile.
-  - When you finish your ride, the light turns off automatically.
+  - When you press **„Start Ride“** on your Karoo, all lights power on automatically with your preferred profile/mode.
+  - When you finish your ride, the lights turn off automatically.
 - **🔒 100% Standalone & Offline:**  
-  Direct Bluetooth Low Energy (BLE) connection between Karoo and Rayo. No phone connection required during your ride!
+  Direct Bluetooth Low Energy (BLE) and ANT+ communication on Karoo. No phone connection required during your ride!
 
 ---
 
@@ -71,6 +78,12 @@ A GitHub Actions workflow (`.github/workflows/build.yml`) is included to automat
 If this extension makes your bike rides safer and more convenient, consider supporting the project:
 
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-yellow?style=for-the-badge&logo=buy-me-a-coffee)](https://buymeacoffee.com/02eOWKzm5W)
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+- **[LightONKaroo](https://github.com/JaJaJim/LightONKaroo)**: Huge thanks to Dennis Straßer, Peter Weber ([JaJaJim](https://github.com/JaJaJim)), and Tiago Fontes Dias for their pioneering reverse-engineering and IPC implementation for Karoo `SensorService` ANT+ light and radar control (MIT License).
 
 ---
 

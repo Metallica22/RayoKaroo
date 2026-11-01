@@ -1,3 +1,14 @@
+/*
+ * Based on Karoo SensorService IPC implementation from LightONKaroo
+ * https://github.com/JaJaJim/LightONKaroo
+ *
+ * Copyright (c) 2026 Dennis Straßer (derstrassi)
+ * Copyright (c) 2026 Peter Weber (JaJaJim)
+ * Copyright (c) 2026 Tiago Fontes Dias (tiagodias00)
+ *
+ * Licensed under the MIT License.
+ */
+
 package com.rayo.karoo.ant
 
 import android.content.ComponentName
