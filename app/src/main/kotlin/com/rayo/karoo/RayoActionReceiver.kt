@@ -14,6 +14,12 @@ class RayoActionReceiver : BroadcastReceiver() {
             RayoExtension.ACTION_CYCLE_PROFILE -> {
                 RayoExtension.instance?.cycleProfile()
             }
+            RayoExtension.ACTION_TOGGLE_ANT_LIGHT -> {
+                RayoExtension.instance?.toggleAntLight()
+            }
+            RayoExtension.ACTION_CYCLE_ANT_MODE -> {
+                RayoExtension.instance?.cycleAntMode()
+            }
         }
     }
 }

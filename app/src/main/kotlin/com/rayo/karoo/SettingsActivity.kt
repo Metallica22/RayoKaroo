@@ -17,20 +17,40 @@ import android.util.Log
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import com.rayo.karoo.ant.LightMode
+import java.util.Locale
 
 @SuppressLint("MissingPermission")
 class SettingsActivity : AppCompatActivity() {
 
+    // Rayo BLE Views
     private lateinit var tvPairedStatus: TextView
     private lateinit var btnScanPair: Button
-    private lateinit var swAutoStart: Switch
     private lateinit var spnDefaultProfile: Spinner
     private lateinit var btnTestToggle: Button
+
+    // ANT+ / Lezyne Views
+    private lateinit var tvAntDeviceStatus: TextView
+    private lateinit var swRadarThreat: Switch
+    private lateinit var spnAntDefaultMode: Spinner
+    private lateinit var btnTestAntToggle: Button
+
+    // General Views
+    private lateinit var swAutoStart: Switch
     private lateinit var tvSettingsLog: TextView
 
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var isScanning = false
     private val handler = Handler(Looper.getMainLooper())
+
+    private val antModesList = listOf(
+        LightMode.DAY_FLASH,
+        LightMode.STEADY_HIGH,
+        LightMode.STEADY_MED,
+        LightMode.STEADY_LOW,
+        LightMode.FAST_FLASH,
+        LightMode.SLOW_FLASH
+    )
 
     private val bleListener = object : BleManager.Listener {
         override fun onConnectionStateChange(connected: Boolean, deviceName: String?, mac: String?) {
@@ -43,7 +63,8 @@ class SettingsActivity : AppCompatActivity() {
                     tvSettingsLog.text = "Rayo verbunden!"
                     updateTestButtonText(RayoExtension.instance?.bleManager?.isLightOn ?: false)
                 } else {
-                    val savedMac = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE).getString(RayoExtension.PREF_MAC, null)
+                    val savedMac = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE)
+                        .getString(RayoExtension.PREF_MAC, null)
                     if (!savedMac.isNullOrEmpty()) {
                         tvPairedStatus.text = "Gekoppelt: $savedMac (getrennt)"
                         tvPairedStatus.setTextColor(0xFFFFAA00.toInt())
@@ -52,7 +73,7 @@ class SettingsActivity : AppCompatActivity() {
                         tvPairedStatus.setTextColor(0xFFFFFFFF.toInt())
                     }
                     btnTestToggle.text = "Rayo verbinden & testen"
-                    tvSettingsLog.text = "Nicht verbunden."
+                    tvSettingsLog.text = "Rayo nicht verbunden."
                 }
             }
         }
@@ -84,11 +105,20 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
+        // Bind Rayo Views
         tvPairedStatus = findViewById(R.id.tvPairedStatus)
         btnScanPair = findViewById(R.id.btnScanPair)
-        swAutoStart = findViewById(R.id.swAutoStart)
         spnDefaultProfile = findViewById(R.id.spnDefaultProfile)
         btnTestToggle = findViewById(R.id.btnTestToggle)
+
+        // Bind ANT+ Views
+        tvAntDeviceStatus = findViewById(R.id.tvAntDeviceStatus)
+        swRadarThreat = findViewById(R.id.swRadarThreat)
+        spnAntDefaultMode = findViewById(R.id.spnAntDefaultMode)
+        btnTestAntToggle = findViewById(R.id.btnTestAntToggle)
+
+        // Bind General Views
+        swAutoStart = findViewById(R.id.swAutoStart)
         tvSettingsLog = findViewById(R.id.tvSettingsLog)
 
         checkPermissions()
@@ -101,8 +131,8 @@ class SettingsActivity : AppCompatActivity() {
             Log.e("SettingsActivity", "Error starting RayoExtension service", e)
         }
 
-        // Profile spinner setup
-        val profiles = arrayOf("Profile 1", "Profile 2", "Profile 3", "Profile 4")
+        // Rayo Profile spinner setup
+        val profiles = arrayOf("Profil 1", "Profil 2", "Profil 3", "Profil 4")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, profiles)
         spnDefaultProfile.adapter = adapter
         val prefs = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE)
@@ -120,14 +150,42 @@ class SettingsActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        swAutoStart.setOnCheckedChangeListener { _, isChecked ->
-            prefs.edit().putBoolean(RayoExtension.PREF_AUTO_START, isChecked).apply()
+        // ANT+ Default Mode spinner setup
+        val isGerman = Locale.getDefault().language.startsWith("de")
+        val antModeLabels = antModesList.map { it.getLocalizedName(isGerman) }
+        val antAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, antModeLabels)
+        spnAntDefaultMode.adapter = antAdapter
+
+        val savedAntMode = prefs.getString(RayoExtension.PREF_ANT_DEFAULT_MODE, LightMode.DAY_FLASH.karooName)
+        val selectedIndex = antModesList.indexOfFirst { it.karooName == savedAntMode }.coerceAtLeast(0)
+        spnAntDefaultMode.setSelection(selectedIndex)
+
+        spnAntDefaultMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val mode = antModesList[position]
+                prefs.edit().putString(RayoExtension.PREF_ANT_DEFAULT_MODE, mode.karooName).apply()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
+        // Radar Threat Reaction Switch
+        swRadarThreat.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_RADAR_THREAT, isChecked).apply()
+            tvSettingsLog.text = if (isChecked) "Radar-Reaktion aktiviert (Warnblinken bei Fahrzeugen)" else "Radar-Reaktion deaktiviert"
+        }
+
+        // General Ride Auto-Start Switch
+        swAutoStart.setOnCheckedChangeListener { _, isChecked ->
+            prefs.edit().putBoolean(RayoExtension.PREF_AUTO_START, isChecked).apply()
+            tvSettingsLog.text = if (isChecked) "Fahrt-Automatik AN" else "Fahrt-Automatik AUS"
+        }
+
+        // Rayo Scan & Pair Button
         btnScanPair.setOnClickListener {
             startPairingScan()
         }
 
+        // Rayo Test Toggle Button
         btnTestToggle.setOnClickListener {
             val ext = RayoExtension.instance
             if (ext == null) {
@@ -148,12 +206,33 @@ class SettingsActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // Togglen
             val newState = !bm.isLightOn
             bm.setLight(newState)
-            ext.updateAllDataFields()
-            tvSettingsLog.text = if (newState) "Befehl gesendet: LICHT AN!" else "Befehl gesendet: LICHT AUS!"
+            ext.updateAllRayoDataFields()
+            tvSettingsLog.text = if (newState) "Rayo: LICHT AN!" else "Rayo: LICHT AUS!"
             updateTestButtonText(newState)
+        }
+
+        // Lezyne / ANT+ Test Toggle Button
+        btnTestAntToggle.setOnClickListener {
+            val ext = RayoExtension.instance
+            if (ext == null) {
+                startService(Intent(this, RayoExtension::class.java))
+                tvSettingsLog.text = "Starte Dienst… bitte gleich nochmal tippen."
+                return@setOnClickListener
+            }
+
+            val primary = ext.primaryAntLight
+            if (primary == null) {
+                tvSettingsLog.text = "Kein ANT+ Licht gefunden! Bitte zuerst in Karoo-Sensoren koppeln."
+                return@setOnClickListener
+            }
+
+            ext.toggleAntLight()
+            val currentKarooMode = ext.karooLightControl.actualModes.value[primary.id]
+            val modeEnum = LightMode.fromKarooName(currentKarooMode)
+            tvSettingsLog.text = "Lezyne: ${modeEnum.getLocalizedName(isGerman)}"
+            updateAntStatus()
         }
     }
 
@@ -168,14 +247,42 @@ class SettingsActivity : AppCompatActivity() {
             tvPairedStatus.setTextColor(0xFF00E676.toInt())
             updateTestButtonText(bm.isLightOn)
         } else {
-            val mac = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE).getString(RayoExtension.PREF_MAC, null)
+            val mac = getSharedPreferences(RayoExtension.PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(RayoExtension.PREF_MAC, null)
             if (!mac.isNullOrEmpty()) {
                 tvPairedStatus.text = "Gekoppelt: $mac (getrennt)"
                 tvPairedStatus.setTextColor(0xFFFFAA00.toInt())
-                // Try connecting in background
                 RayoExtension.instance?.connectBle(mac)
             }
             btnTestToggle.text = "Rayo verbinden & testen"
+        }
+
+        updateAntStatus()
+    }
+
+    private fun updateAntStatus() {
+        val ext = RayoExtension.instance ?: return
+        val isGerman = Locale.getDefault().language.startsWith("de")
+        val primary = ext.primaryAntLight
+
+        if (primary != null) {
+            val connState = ext.karooLightControl.connectionStates.value[primary.id] ?: "Verbunden"
+            val currentKarooMode = ext.karooLightControl.actualModes.value[primary.id]
+            val modeEnum = LightMode.fromKarooName(currentKarooMode)
+            val batStr = if (primary.batteryPercent != null) " (${primary.batteryPercent}%)" else ""
+
+            tvAntDeviceStatus.text = "Erkannt: ${primary.name}$batStr\nModus: ${modeEnum.getLocalizedName(isGerman)}"
+            tvAntDeviceStatus.setTextColor(0xFF00E676.toInt())
+
+            if (modeEnum == LightMode.OFF) {
+                btnTestAntToggle.text = if (isGerman) "Lezyne einschalten" else "Turn Lezyne On"
+            } else {
+                btnTestAntToggle.text = if (isGerman) "Lezyne ausschalten" else "Turn Lezyne Off"
+            }
+        } else {
+            tvAntDeviceStatus.text = getString(R.string.no_ant_lights)
+            tvAntDeviceStatus.setTextColor(0xFFFFAA00.toInt())
+            btnTestAntToggle.text = getString(R.string.test_ant_toggle)
         }
     }
 
@@ -186,11 +293,11 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun updateTestButtonText(isLightOn: Boolean) {
         if (isLightOn) {
-            btnTestToggle.text = "LICHT IST AN (Tippen für AUS)"
+            btnTestToggle.text = "Rayo: LICHT AN (Tippen für AUS)"
             btnTestToggle.setBackgroundColor(0xFF00E676.toInt())
             btnTestToggle.setTextColor(0xFF000000.toInt())
         } else {
-            btnTestToggle.text = "LICHT IST AUS (Tippen für AN)"
+            btnTestToggle.text = "Rayo: LICHT AUS (Tippen für AN)"
             btnTestToggle.setBackgroundColor(0xFF282A33.toInt())
             btnTestToggle.setTextColor(0xFFFFFFFF.toInt())
         }
@@ -207,6 +314,7 @@ class SettingsActivity : AppCompatActivity() {
             tvPairedStatus.setTextColor(0xFFFFFFFF.toInt())
         }
         swAutoStart.isChecked = prefs.getBoolean(RayoExtension.PREF_AUTO_START, true)
+        swRadarThreat.isChecked = prefs.getBoolean(RayoExtension.PREF_RADAR_THREAT, true)
     }
 
     private fun startPairingScan() {
@@ -275,7 +383,6 @@ class SettingsActivity : AppCompatActivity() {
         tvPairedStatus.setTextColor(0xFF00E676.toInt())
         tvSettingsLog.text = "Rayo gekoppelt! Verbinde…"
 
-        // Ensure service is running and connecting
         startService(Intent(this, RayoExtension::class.java))
         RayoExtension.instance?.connectBle(mac)
     }

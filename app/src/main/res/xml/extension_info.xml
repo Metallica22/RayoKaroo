@@ -7,6 +7,7 @@
     scansDevices="true"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Rayo BLE Tail Light Data Fields -->
     <DataType
         typeId="rayo_control"
         displayName="@string/datatype_control_name"
@@ -17,6 +18,19 @@
         typeId="rayo_battery"
         displayName="@string/datatype_battery_name"
         description="@string/datatype_battery_desc"
+        graphical="false" />
+
+    <!-- Lezyne Radar / ANT+ Bike Light Data Fields -->
+    <DataType
+        typeId="ant_light_control"
+        displayName="@string/datatype_ant_control_name"
+        description="@string/datatype_ant_control_desc"
+        graphical="true" />
+
+    <DataType
+        typeId="ant_light_battery"
+        displayName="@string/datatype_ant_battery_name"
+        description="@string/datatype_ant_battery_desc"
         graphical="false" />
 
 </ExtensionInfo>

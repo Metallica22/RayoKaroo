@@ -1,23 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Rayo Licht</string>
-    <string name="extension_description">Steuerung des Hauteworks Rayo Rücklichts auf dem Karoo</string>
+    <string name="app_name">Rayo &amp; Radar Licht</string>
+    <string name="extension_description">Steuerung des Hauteworks Rayo und Lezyne / ANT+ Radar-Rücklichter auf dem Karoo</string>
 
+    <!-- Rayo BLE Strings -->
     <string name="datatype_control_name">Rayo Steuerung</string>
     <string name="datatype_control_desc">Interaktives Datenfeld zum Ein-/Ausschalten und Profilwechsel während der Fahrt</string>
-
     <string name="datatype_battery_name">Rayo Akku</string>
     <string name="datatype_battery_desc">Echtzeit-Akkustand des Rayo Rücklichts in %</string>
 
-    <string name="settings_title">Rayo Einstellungen</string>
+    <!-- ANT+ / Lezyne Radar Strings -->
+    <string name="datatype_ant_control_name">Lezyne / ANT+ Steuerung</string>
+    <string name="datatype_ant_control_desc">Interaktives Datenfeld für Lezyne Radar &amp; ANT+ Lichter mit Modus-Wechsel und Radarwarnung</string>
+    <string name="datatype_ant_battery_name">Lezyne / ANT+ Akku</string>
+    <string name="datatype_ant_battery_desc">Echtzeit-Akkustand des Lezyne Radar / ANT+ Lichts in %</string>
+
+    <!-- Settings UI Strings -->
+    <string name="settings_title">Licht- &amp; Radar-Einstellungen</string>
+    <string name="section_rayo">Hauteworks Rayo (Bluetooth)</string>
+    <string name="section_ant">Lezyne Radar / ANT+ Lichter</string>
     <string name="paired_device_format">Gekoppeltes Licht: %s</string>
     <string name="not_paired">Kein Rayo gekoppelt</string>
     <string name="btn_scan_pair">Rayo suchen &amp; koppeln</string>
     <string name="auto_start_title">Fahrt-Automatik</string>
-    <string name="auto_start_desc">Licht automatisch bei Fahrtbeginn einschalten und bei Fahrtende ausschalten</string>
-    <string name="default_profile_title">Standard-Profil</string>
-    <string name="test_connection">Licht-Schalter testen</string>
+    <string name="auto_start_desc">Lichter automatisch bei Fahrtbeginn einschalten und bei Fahrtende ausschalten</string>
+    <string name="radar_threat_title">Radar-Reaktion</string>
+    <string name="radar_threat_desc">Lezyne-Licht automatisch warnblinken/verstärken, wenn sich von hinten ein Fahrzeug nähert</string>
+    <string name="default_profile_title">Rayo Standard-Profil</string>
+    <string name="ant_default_mode_title">Lezyne Standard-Modus</string>
+    <string name="test_connection">Rayo-Schalter testen</string>
+    <string name="test_ant_toggle">Lezyne-Schalter testen</string>
     <string name="status_scanning">Scanne nach Rayo…</string>
     <string name="status_paired">Rayo erfolgreich gekoppelt!</string>
     <string name="status_not_found">Kein Rayo gefunden. Bitte Licht einschalten.</string>
+    <string name="ant_lights_discovered">Erkannte ANT+ Lichter: %d</string>
+    <string name="no_ant_lights">Kein ANT+ Licht gefunden. Bitte Lezyne zuerst in den Karoo-Sensoren koppeln!</string>
 </resources>
