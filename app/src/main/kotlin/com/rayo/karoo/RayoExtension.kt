@@ -1,17 +1,29 @@
 package com.rayo.karoo
 
 import android.app.PendingIntent
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.util.Log
 import android.widget.RemoteViews
 import io.hammerhead.karooext.KarooSystemService
 import io.hammerhead.karooext.extension.DataTypeImpl
 import io.hammerhead.karooext.extension.KarooExtension
 import io.hammerhead.karooext.internal.Emitter
 import io.hammerhead.karooext.internal.ViewEmitter
+import io.hammerhead.karooext.models.BatteryStatus
+import io.hammerhead.karooext.models.ConnectionStatus
 import io.hammerhead.karooext.models.DataPoint
 import io.hammerhead.karooext.models.DataType
+import io.hammerhead.karooext.models.Device
+import io.hammerhead.karooext.models.DeviceEvent
+import io.hammerhead.karooext.models.OnBatteryStatus
+import io.hammerhead.karooext.models.OnConnectionStatus
+import io.hammerhead.karooext.models.OnDataPoint
 import io.hammerhead.karooext.models.RideState
 import io.hammerhead.karooext.models.StreamState
 import io.hammerhead.karooext.models.UpdateGraphicConfig
@@ -78,7 +90,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             }
         })
 
-        // Auto-connect to paired MAC if available
+        // Auto-connect to paired MAC if available immediately on service create
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedMac = prefs.getString(PREF_MAC, null)
         if (!savedMac.isNullOrEmpty()) {
@@ -125,6 +137,114 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             bleManager.connect(savedMac)
         }
         return START_STICKY
+    }
+
+    /**
+     * Native Karoo Sensor Scanner:
+     * Allows Rayo to appear under Karoo's native "Sensors" menu!
+     */
+    override fun startScan(emitter: Emitter<Device>) {
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        val scanner = bluetoothAdapter.bluetoothLeScanner ?: return
+
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+
+        val foundMacs = mutableSetOf<String>()
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+                val dev = result?.device ?: return
+                val address = dev.address ?: return
+                val name = dev.name ?: ""
+
+                val matches = name.contains("RAYO", ignoreCase = true) || name.contains("CLIQ", ignoreCase = true)
+                if (matches && foundMacs.add(address)) {
+                    val displayName = if (name.isNotBlank()) name else "Rayo Smart Light"
+                    emitter.onNext(
+                        Device(
+                            extension = extension,
+                            uid = address,
+                            dataTypes = listOf(
+                                DataType.dataTypeId(extension, TYPE_RAYO_CONTROL),
+                                DataType.dataTypeId(extension, TYPE_RAYO_BATTERY)
+                            ),
+                            displayName = displayName
+                        )
+                    )
+                }
+            }
+
+            override fun onScanFailed(errorCode: Int) {}
+        }
+
+        try {
+            scanner.startScan(null, settings, callback)
+        } catch (e: Exception) {
+            Log.e("RayoExtension", "Error starting scan in Karoo sensor menu", e)
+        }
+
+        emitter.setCancellable {
+            try {
+                scanner.stopScan(callback)
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    /**
+     * Native Karoo Sensor Connection:
+     * Karoo OS automatically calls this in the background when Rayo is saved as a sensor!
+     */
+    override fun connectDevice(uid: String, emitter: Emitter<DeviceEvent>) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(PREF_MAC, uid).apply()
+
+        val deviceListener = object : BleManager.Listener {
+            override fun onConnectionStateChange(connected: Boolean, deviceName: String?, mac: String?) {
+                if (connected) {
+                    emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
+                    if (bleManager.batteryPercent >= 0) {
+                        emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(bleManager.batteryPercent)))
+                    }
+                } else {
+                    emitter.onNext(OnConnectionStatus(ConnectionStatus.SEARCHING))
+                }
+            }
+
+            override fun onBatteryUpdate(percent: Int) {
+                emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(percent)))
+                emitter.onNext(
+                    OnDataPoint(
+                        DataPoint(
+                            dataTypeId = DataType.dataTypeId(extension, TYPE_RAYO_BATTERY),
+                            values = mapOf(DataType.Field.SINGLE to percent.toDouble()),
+                            sourceId = uid
+                        )
+                    )
+                )
+            }
+
+            override fun onLightStateUpdate(isOn: Boolean) {}
+
+            override fun onActiveModeUpdate(mode: Int) {}
+        }
+
+        bleManager.addListener(deviceListener)
+        bleManager.connect(uid)
+
+        if (bleManager.isConnected) {
+            emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
+            if (bleManager.batteryPercent >= 0) {
+                emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(bleManager.batteryPercent)))
+            }
+        } else {
+            emitter.onNext(OnConnectionStatus(ConnectionStatus.SEARCHING))
+        }
+
+        emitter.setCancellable {
+            bleManager.removeListener(deviceListener)
+        }
     }
 
     fun connectBle(mac: String? = null) {
@@ -271,6 +391,12 @@ class RayoControlDataType(
     override fun startView(context: Context, config: ViewConfig, emitter: ViewEmitter) {
         emitter.onNext(UpdateGraphicConfig(showHeader = false))
         extensionContext.registerViewEmitter(emitter)
+
+        // Auto-connect when in-ride data field becomes visible on page
+        if (!extensionContext.bleManager.isConnected) {
+            extensionContext.connectBle()
+        }
+
         emitter.setCancellable {
             extensionContext.unregisterViewEmitter(emitter)
         }

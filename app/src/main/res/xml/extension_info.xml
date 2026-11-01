@@ -4,6 +4,7 @@
     displayName="@string/app_name"
     description="@string/extension_description"
     icon="@drawable/ic_launcher"
+    scansDevices="true"
     xmlns:android="http://schemas.android.com/apk/res/android">
 
     <DataType
