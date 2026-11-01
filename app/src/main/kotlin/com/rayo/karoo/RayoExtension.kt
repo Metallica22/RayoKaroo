@@ -153,15 +153,27 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
 
         val foundMacs = mutableSetOf<String>()
 
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val savedMac = prefs.getString(PREF_MAC, null)
+
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 val dev = result?.device ?: return
                 val address = dev.address ?: return
-                val name = dev.name ?: ""
+                val scanRecord = result.scanRecord
+                val devName = try { dev.name ?: "" } catch (e: SecurityException) { "" }
+                val recordName = scanRecord?.deviceName ?: ""
+                val effectiveName = if (devName.isNotBlank()) devName else recordName
 
-                val matches = name.contains("RAYO", ignoreCase = true) || name.contains("CLIQ", ignoreCase = true)
-                if (matches && foundMacs.add(address)) {
-                    val displayName = if (name.isNotBlank()) name else "Rayo Smart Light"
+                val hasNusUuid = scanRecord?.serviceUuids?.any {
+                    it.uuid == BleManager.NUS_SERVICE_UUID
+                } == true
+
+                val matchesName = effectiveName.contains("RAYO", ignoreCase = true) || effectiveName.contains("CLIQ", ignoreCase = true)
+                val matchesMac = !savedMac.isNullOrEmpty() && address.equals(savedMac, ignoreCase = true)
+
+                if ((matchesName || hasNusUuid || matchesMac) && foundMacs.add(address)) {
+                    val displayName = if (effectiveName.isNotBlank()) effectiveName else "Rayo Light"
                     emitter.onNext(
                         Device(
                             extension = extension,
