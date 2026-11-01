@@ -192,6 +192,16 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         }
     }
 
+    private fun batteryStatusFromPercentage(percent: Int): BatteryStatus {
+        return when {
+            percent > 80 -> BatteryStatus.GOOD
+            percent > 30 -> BatteryStatus.OK
+            percent > 15 -> BatteryStatus.LOW
+            percent > 0 -> BatteryStatus.CRITICAL
+            else -> BatteryStatus.INVALID
+        }
+    }
+
     /**
      * Native Karoo Sensor Connection:
      * Karoo OS automatically calls this in the background when Rayo is saved as a sensor!
@@ -205,7 +215,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 if (connected) {
                     emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
                     if (bleManager.batteryPercent >= 0) {
-                        emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(bleManager.batteryPercent)))
+                        emitter.onNext(OnBatteryStatus(batteryStatusFromPercentage(bleManager.batteryPercent)))
                     }
                 } else {
                     emitter.onNext(OnConnectionStatus(ConnectionStatus.SEARCHING))
@@ -213,7 +223,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             }
 
             override fun onBatteryUpdate(percent: Int) {
-                emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(percent)))
+                emitter.onNext(OnBatteryStatus(batteryStatusFromPercentage(percent)))
                 emitter.onNext(
                     OnDataPoint(
                         DataPoint(
@@ -236,7 +246,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         if (bleManager.isConnected) {
             emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
             if (bleManager.batteryPercent >= 0) {
-                emitter.onNext(OnBatteryStatus(BatteryStatus.fromPercentage(bleManager.batteryPercent)))
+                emitter.onNext(OnBatteryStatus(batteryStatusFromPercentage(bleManager.batteryPercent)))
             }
         } else {
             emitter.onNext(OnConnectionStatus(ConnectionStatus.SEARCHING))
