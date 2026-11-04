@@ -6,7 +6,7 @@
     android:background="#121318"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="6dp">
+    android:padding="5dp">
 
     <!-- Header: App Name & Battery -->
     <LinearLayout
@@ -34,29 +34,31 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Main In-Ride Interactive Button: Light Toggle -->
+    <!-- Main In-Ride Interactive Button: Light Toggle (Slightly reduced in height, text +50%) -->
     <Button
         android:id="@+id/btnToggleLight"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="4dp"
-        android:layout_weight="1"
+        android:layout_marginTop="3dp"
+        android:layout_marginBottom="3dp"
+        android:layout_weight="1.1"
         android:background="#282A33"
-        android:text="LIGHT OFF"
+        android:text="LICHT AUS"
         android:textColor="#FFFFFF"
-        android:textSize="14sp"
+        android:textSize="21sp"
         android:textStyle="bold" />
 
-    <!-- Secondary In-Ride Button: Cycle Profile -->
+    <!-- Secondary In-Ride Button: Cycle Profile (Enlarged touch area & text size) -->
     <Button
         android:id="@+id/btnCycleProfile"
         android:layout_width="match_parent"
-        android:layout_height="28dp"
-        android:background="#1C1D24"
-        android:text="PROFILE 1"
-        android:textColor="#9E9EA7"
-        android:textSize="10sp"
+        android:layout_height="0dp"
+        android:layout_marginBottom="1dp"
+        android:layout_weight="0.9"
+        android:background="#1F2029"
+        android:text="PROFIL 1"
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
 </LinearLayout>

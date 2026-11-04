@@ -484,11 +484,12 @@ class BleManager(private val context: Context, initialListener: Listener? = null
 
     /**
      * Select profile 0..3 (Profile 1..4 in UI)
+     * Rayo cmd_get_mode opcode 0x20 switches active profile
      */
     fun selectProfile(index: Int) {
         if (!isConnected || rxChar == null) return
         val clamped = index.coerceIn(0, 3)
-        val packet = buildPacket(0x10, byteArrayOf(clamped.toByte()))
+        val packet = buildPacket(0x20, byteArrayOf(clamped.toByte()))
         writeCommand(packet)
         currentMode = clamped
 

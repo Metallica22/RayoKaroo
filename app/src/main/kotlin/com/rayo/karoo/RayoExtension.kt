@@ -736,11 +736,19 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
     }
 
     fun cycleProfile() {
-        if (!bleManager.isConnected) return
+        val isGerman = Locale.getDefault().language.startsWith("de")
+        if (!bleManager.isConnected) {
+            connectBle()
+            showInRideAlert("Rayo: " + (if (isGerman) "Nicht verbunden" else "Not connected"), if (isGerman) "Verbinde..." else "Connecting...")
+            return
+        }
         val next = (bleManager.currentMode + 1) % 4
         bleManager.selectProfile(next)
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(PREF_DEFAULT_PROFILE, next).apply()
         updateAllRayoDataFields()
-        showInRideAlert("Rayo: Profil ${next + 1}", "Bluetooth")
+        val profilePrefix = if (isGerman) "Profil" else "Profile"
+        showInRideAlert("Rayo: $profilePrefix ${next + 1}", "Bluetooth")
     }
 
     // --- EMITTER REGISTRATION & UPDATES ---
