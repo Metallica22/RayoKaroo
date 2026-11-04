@@ -6,9 +6,11 @@ import android.bluetooth.le.*
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import java.util.*
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 @SuppressLint("MissingPermission")
 class BleManager(private val context: Context, initialListener: Listener? = null) {
@@ -21,7 +23,7 @@ class BleManager(private val context: Context, initialListener: Listener? = null
     }
 
     companion object {
-        private const val TAG = "RayoKarooBle"
+        private const val TAG = "RayoBleManager"
 
         // Nordic UART Service (NUS)
         val NUS_SERVICE_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -32,6 +34,9 @@ class BleManager(private val context: Context, initialListener: Listener? = null
         // Battery Service
         val BATTERY_SERVICE_UUID: UUID = UUID.fromString("0000180F-0000-1000-8000-00805F9B34FB")
         val BATTERY_LEVEL_CHAR_UUID: UUID = UUID.fromString("00002A19-0000-1000-8000-00805F9B34FB")
+
+        private const val SCAN_TIMEOUT_MS = 10000L
+        private const val SETUP_TIMEOUT_MS = 8000L
     }
 
     private val listeners = CopyOnWriteArrayList<Listener>()
@@ -65,6 +70,8 @@ class BleManager(private val context: Context, initialListener: Listener? = null
 
     var isConnected = false
         private set
+    var isConnecting = false
+        private set
     var connectedDeviceName: String? = null
         private set
     var connectedMac: String? = null
@@ -76,123 +83,261 @@ class BleManager(private val context: Context, initialListener: Listener? = null
     var batteryPercent = -1
         private set
 
-    private var isScanning = false
+    var targetMacAddress: String? = null
+        private set
+
+    // Pending action after connect
+    var pendingLightToggleAfterConnect = false
+
+    private val isScanning = AtomicBoolean(false)
+    private var currentScanCallback: ScanCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun connect(targetMac: String? = null) {
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) return
-        if (isConnected) return
+    private var retryAttempt = 0
+    private var autoReconnectEnabled = true
 
-        if (!targetMac.isNullOrEmpty()) {
-            try {
-                val device = bluetoothAdapter.getRemoteDevice(targetMac)
-                connectToDevice(device)
-                return
-            } catch (e: Exception) {
-                Log.e(TAG, "Error resolving remote device MAC: $targetMac", e)
-            }
+    private val scanTimeoutRunnable = Runnable {
+        if (isScanning.get()) {
+            Log.d(TAG, "Scan timeout reached without finding Rayo. Scheduling retry...")
+            stopScan()
+            scheduleReconnectRetry()
         }
-
-        // Otherwise scan for Rayo
-        startScan(targetMac)
     }
 
-    private fun startScan(filterMac: String?) {
-        if (isScanning) return
-        bleScanner = bluetoothAdapter?.bluetoothLeScanner ?: return
+    private val gattSetupWatchdogRunnable = Runnable {
+        if (isConnecting && !isConnected) {
+            Log.w(TAG, "GATT setup watchdog timed out. Closing stalled GATT connection and retrying...")
+            disconnectGattInternal()
+            scheduleReconnectRetry()
+        }
+    }
 
-        isScanning = true
+    /**
+     * Connect to Rayo using Scan-then-Connect.
+     * On Karoo's busy radio, a blind connectGatt hangs; connecting immediately after
+     * receiving an advertisement packet ensures the connection request lands in the
+     * peripheral's listening window.
+     */
+    fun connect(mac: String? = null, autoTurnOnAfterConnect: Boolean = false) {
+        val target = mac ?: targetMacAddress
+        if (!target.isNullOrEmpty()) {
+            targetMacAddress = target
+        }
+
+        if (autoTurnOnAfterConnect) {
+            pendingLightToggleAfterConnect = true
+        }
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            Log.w(TAG, "Cannot connect: Bluetooth adapter is null or disabled.")
+            return
+        }
+
+        if (isConnected) {
+            Log.d(TAG, "Already connected to Rayo ($connectedMac)")
+            if (pendingLightToggleAfterConnect) {
+                pendingLightToggleAfterConnect = false
+                setLight(true)
+            }
+            return
+        }
+
+        retryAttempt = 0
+        autoReconnectEnabled = true
+        startScanThenConnect()
+    }
+
+    private fun startScanThenConnect() {
+        if (isConnected || isScanning.get()) return
+
+        val scanner = bluetoothAdapter?.bluetoothLeScanner
+        if (scanner == null) {
+            Log.w(TAG, "BLE Scanner not available. Scheduling retry...")
+            scheduleReconnectRetry()
+            return
+        }
+        bleScanner = scanner
+
+        val filters = mutableListOf<ScanFilter>()
+        val targetMac = targetMacAddress
+
+        if (!targetMac.isNullOrEmpty() && BluetoothAdapter.checkBluetoothAddress(targetMac)) {
+            filters.add(ScanFilter.Builder().setDeviceAddress(targetMac).build())
+        }
+
+        // Also allow matching by name or NUS Service UUID
+        filters.add(ScanFilter.Builder().setDeviceName("RAYO").build())
+        filters.add(ScanFilter.Builder().setServiceUuid(android.os.ParcelUuid(NUS_SERVICE_UUID)).build())
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        val callback = object : ScanCallback() {
+        val scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 val device = result?.device ?: return
-                val name = device.name ?: ""
-                val address = device.address
+                val address = device.address ?: return
+                val devName = try { device.name ?: "" } catch (e: SecurityException) { "" }
+                val scanRecord = result.scanRecord
+                val recordName = scanRecord?.deviceName ?: ""
+                val effectiveName = if (devName.isNotBlank()) devName else recordName
 
-                val matchesMac = !filterMac.isNullOrEmpty() && address.equals(filterMac, ignoreCase = true)
-                val matchesName = name.contains("RAYO", ignoreCase = true) || name.contains("CLIQ", ignoreCase = true)
+                val matchesMac = !targetMac.isNullOrEmpty() && address.equals(targetMac, ignoreCase = true)
+                val matchesName = effectiveName.contains("RAYO", ignoreCase = true) || effectiveName.contains("CLIQ", ignoreCase = true)
+                val hasNus = scanRecord?.serviceUuids?.any { it.uuid == NUS_SERVICE_UUID } == true
 
-                if (matchesMac || matchesName) {
-                    stopScan(this)
-                    connectToDevice(device)
+                if (matchesMac || matchesName || hasNus) {
+                    Log.i(TAG, "🎯 Found Rayo: $effectiveName [$address] (RSSI=${result.rssi}). Stopping scan & connecting GATT...")
+                    stopScan()
+
+                    targetMacAddress = address
+                    connectGattInternal(device)
                 }
             }
 
             override fun onScanFailed(errorCode: Int) {
-                isScanning = false
+                Log.e(TAG, "Scan failed with error: $errorCode")
+                isScanning.set(false)
+                scheduleReconnectRetry()
             }
         }
 
         try {
-            bleScanner?.startScan(null, settings, callback)
-            mainHandler.postDelayed({ stopScan(callback) }, 15000)
+            isScanning.set(true)
+            currentScanCallback = scanCallback
+            isConnecting = true
+            scanner.startScan(filters, settings, scanCallback)
+            Log.d(TAG, "Started Scan-then-Connect for Rayo (${targetMac ?: "any"})...")
+
+            mainHandler.removeCallbacks(scanTimeoutRunnable)
+            mainHandler.postDelayed(scanTimeoutRunnable, SCAN_TIMEOUT_MS)
         } catch (e: Exception) {
-            isScanning = false
+            Log.e(TAG, "Error starting BLE scan for Rayo", e)
+            isScanning.set(false)
+            scheduleReconnectRetry()
         }
     }
 
-    private fun stopScan(callback: ScanCallback) {
-        if (isScanning) {
+    private fun stopScan() {
+        mainHandler.removeCallbacks(scanTimeoutRunnable)
+        if (isScanning.compareAndSet(true, false)) {
             try {
-                bleScanner?.stopScan(callback)
+                currentScanCallback?.let { bleScanner?.stopScan(it) }
             } catch (ignored: Exception) {}
-            isScanning = false
+            currentScanCallback = null
         }
     }
 
-    private fun connectToDevice(device: BluetoothDevice) {
+    private fun connectGattInternal(device: BluetoothDevice) {
+        disconnectGattInternal()
+
+        isConnecting = true
+        mainHandler.removeCallbacks(gattSetupWatchdogRunnable)
+        mainHandler.postDelayed(gattSetupWatchdogRunnable, SETUP_TIMEOUT_MS)
+
         try {
-            bluetoothGatt?.close()
+            Log.d(TAG, "Invoking device.connectGatt(TRANSPORT_LE) for ${device.address}")
             bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
-            Log.e(TAG, "Error connecting GATT", e)
+            Log.e(TAG, "Exception during connectGatt", e)
+            isConnecting = false
+            scheduleReconnectRetry()
         }
     }
 
-    fun disconnect() {
+    private fun disconnectGattInternal() {
+        mainHandler.removeCallbacks(gattSetupWatchdogRunnable)
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
-            bluetoothGatt = null
         } catch (ignored: Exception) {}
-        isConnected = false
+        bluetoothGatt = null
         rxChar = null
+        isConnected = false
+        isConnecting = false
+    }
+
+    fun disconnect() {
+        autoReconnectEnabled = false
+        stopScan()
+        disconnectGattInternal()
         connectedDeviceName = null
         connectedMac = null
-        for (l in listeners) {
-            l.onConnectionStateChange(false, null, null)
+
+        mainHandler.post {
+            for (l in listeners) {
+                l.onConnectionStateChange(false, null, null)
+            }
         }
+    }
+
+    private fun scheduleReconnectRetry() {
+        if (!autoReconnectEnabled || isConnected) return
+
+        retryAttempt++
+        // Backoff: 2s -> 4s -> 8s -> max 12s
+        val delayMs = (2000L * (1 shl (retryAttempt.coerceAtMost(3) - 1))).coerceAtMost(12000L)
+        Log.d(TAG, "Will retry Rayo Scan-then-Connect in ${delayMs / 1000}s (attempt #$retryAttempt)...")
+
+        mainHandler.postDelayed({
+            if (autoReconnectEnabled && !isConnected) {
+                startScanThenConnect()
+            }
+        }, delayMs)
     }
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            Log.d(TAG, "GATT onConnectionStateChange status=$status newState=$newState")
+
             if (newState == BluetoothProfile.STATE_CONNECTED) {
-                isConnected = true
+                isConnecting = true
                 connectedDeviceName = gatt?.device?.name ?: "RAYO"
                 connectedMac = gatt?.device?.address
+
+                // Request HIGH priority for fast service discovery and initialization
+                try {
+                    gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                } catch (ignored: Exception) {}
+
                 mainHandler.postDelayed({
                     try {
-                        gatt?.discoverServices()
-                    } catch (ignored: Exception) {}
-                }, 400)
+                        val success = gatt?.discoverServices() ?: false
+                        Log.d(TAG, "discoverServices initiated: $success")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in discoverServices", e)
+                    }
+                }, 300)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                isConnected = false
-                rxChar = null
-                connectedDeviceName = null
-                connectedMac = null
+                Log.i(TAG, "GATT disconnected (status=$status)")
+                mainHandler.removeCallbacks(gattSetupWatchdogRunnable)
+                val wasConnected = isConnected
+
+                disconnectGattInternal()
+
                 mainHandler.post {
                     for (l in listeners) {
                         l.onConnectionStateChange(false, null, null)
                     }
                 }
+
+                if (autoReconnectEnabled) {
+                    scheduleReconnectRetry()
+                }
             }
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
-            if (status != BluetoothGatt.GATT_SUCCESS || gatt == null) return
+            mainHandler.removeCallbacks(gattSetupWatchdogRunnable)
+
+            if (status != BluetoothGatt.GATT_SUCCESS || gatt == null) {
+                Log.w(TAG, "onServicesDiscovered failed with status: $status")
+                disconnectGattInternal()
+                scheduleReconnectRetry()
+                return
+            }
+
+            Log.i(TAG, "✅ Services discovered successfully on Rayo!")
 
             val nus = gatt.getService(NUS_SERVICE_UUID)
             if (nus != null) {
@@ -216,6 +361,8 @@ class BleManager(private val context: Context, initialListener: Listener? = null
                         gatt.writeDescriptor(desc)
                     }
                 }
+            } else {
+                Log.w(TAG, "NUS service not found on device!")
             }
 
             // Battery service
@@ -226,21 +373,41 @@ class BleManager(private val context: Context, initialListener: Listener? = null
                     try {
                         gatt.readCharacteristic(batChar)
                     } catch (ignored: Exception) {}
-                }, 600)
+                }, 500)
             }
 
+            isConnected = true
+            isConnecting = false
+            retryAttempt = 0
+
+            // Request BALANCED priority after successful setup to conserve battery
+            try {
+                gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+            } catch (ignored: Exception) {}
+
+            val devName = gatt.device?.name ?: "RAYO"
+            val devAddress = gatt.device?.address ?: ""
+            connectedDeviceName = devName
+            connectedMac = devAddress
+
             mainHandler.post {
-                val devName = gatt.device.name ?: "RAYO"
-                val devAddress = gatt.device.address
                 for (l in listeners) {
                     l.onConnectionStateChange(true, devName, devAddress)
                 }
             }
 
-            // Query initial mode & status using profile query (cmd 0x20)
+            // Query initial mode & status
             mainHandler.postDelayed({
                 selectProfile(0)
-            }, 800)
+            }, 700)
+
+            // If a light toggle was requested while connecting, execute it now!
+            if (pendingLightToggleAfterConnect) {
+                pendingLightToggleAfterConnect = false
+                mainHandler.postDelayed({
+                    setLight(true)
+                }, 900)
+            }
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?) {
@@ -289,61 +456,68 @@ class BleManager(private val context: Context, initialListener: Listener? = null
     }
 
     /**
-     * cmd_set_config (0x11): [0xFF, 0xFF, theft ? 1 : 0, on ? 1 : 0]
-     * Exact verified packet from original Rayo protocol!
+     * Send light ON/OFF command to Rayo.
+     * Uses opcode 0x11 with full 4-byte payload [0xFF, 0xFF, 0, on ? 1 : 0].
      */
     fun setLight(on: Boolean) {
+        if (!isConnected || rxChar == null) {
+            Log.w(TAG, "Cannot setLight: not connected or rxChar is null.")
+            return
+        }
+
         val payload = byteArrayOf(
             0xFF.toByte(),
             0xFF.toByte(),
-            0.toByte(), // theft alarm off
-            if (on) 1.toByte() else 0.toByte()
+            0x00.toByte(),
+            if (on) 0x01.toByte() else 0x00.toByte()
         )
-        if (sendCommand(0x11.toByte(), payload)) {
-            isLightOn = on
-            mainHandler.post {
-                for (l in listeners) {
-                    l.onLightStateUpdate(on)
-                }
+        val packet = buildPacket(0x11, payload)
+        writeCommand(packet)
+        isLightOn = on
+
+        mainHandler.post {
+            for (l in listeners) {
+                l.onLightStateUpdate(on)
             }
         }
     }
 
     /**
-     * cmd_get_mode (0x20): switches Rayo to profileIndex and replies with current LED configuration
+     * Select profile 0..3 (Profile 1..4 in UI)
      */
     fun selectProfile(index: Int) {
-        val payload = byteArrayOf((index and 0x03).toByte())
-        if (sendCommand(0x20.toByte(), payload)) {
-            currentMode = index
-            mainHandler.post {
-                for (l in listeners) {
-                    l.onActiveModeUpdate(index)
-                }
+        if (!isConnected || rxChar == null) return
+        val clamped = index.coerceIn(0, 3)
+        val packet = buildPacket(0x10, byteArrayOf(clamped.toByte()))
+        writeCommand(packet)
+        currentMode = clamped
+
+        mainHandler.post {
+            for (l in listeners) {
+                l.onActiveModeUpdate(clamped)
             }
         }
     }
 
-    private fun sendCommand(cmd: Byte, payload: ByteArray?): Boolean {
-        val gatt = bluetoothGatt ?: return false
-        val char = rxChar ?: return false
-        val pLen = payload?.size ?: 0
-        val packet = ByteArray(pLen + 2)
-        packet[0] = (pLen + 1).toByte()
-        packet[1] = cmd
-        if (payload != null && pLen > 0) {
-            System.arraycopy(payload, 0, packet, 2, pLen)
-        }
+    private fun writeCommand(bytes: ByteArray) {
+        val gatt = bluetoothGatt ?: return
+        val char = rxChar ?: return
 
-        val props = char.properties
-        if ((props and BluetoothGattCharacteristic.PROPERTY_WRITE) > 0) {
-            char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        } else {
-            char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+        char.value = bytes
+        try {
+            val success = gatt.writeCharacteristic(char)
+            Log.d(TAG, "writeCharacteristic(0x${bytes.joinToString("") { "%02X".format(it) }}) success=$success")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error writing command", e)
         }
-        char.value = packet
-        val ok = gatt.writeCharacteristic(char)
-        Log.d(TAG, "RAW BLE SEND (cmd=0x${String.format("%02X", cmd)}): ok=$ok")
-        return ok
+    }
+
+    private fun buildPacket(command: Int, payload: ByteArray): ByteArray {
+        val len = payload.size + 1
+        val packet = ByteArray(len + 1)
+        packet[0] = len.toByte()
+        packet[1] = command.toByte()
+        System.arraycopy(payload, 0, packet, 2, payload.size)
+        return packet
     }
 }

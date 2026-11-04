@@ -32,6 +32,8 @@ import io.hammerhead.karooext.models.OnBatteryStatus
 import io.hammerhead.karooext.models.OnConnectionStatus
 import io.hammerhead.karooext.models.OnDataPoint
 import io.hammerhead.karooext.models.OnStreamState
+import io.hammerhead.karooext.models.ReleaseBluetooth
+import io.hammerhead.karooext.models.RequestBluetooth
 import io.hammerhead.karooext.models.RideState
 import io.hammerhead.karooext.models.SavedDevices
 import io.hammerhead.karooext.models.StreamState
@@ -215,6 +217,9 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         karooSystem.connect { connected ->
             Log.d(TAG, "Karoo System connected: $connected")
             if (connected) {
+                try {
+                    karooSystem.dispatch(RequestBluetooth(extension))
+                } catch (ignored: Exception) {}
                 setupKarooConsumers()
             }
         }
@@ -235,13 +240,16 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
             when (rideState) {
                 is RideState.Recording -> {
                     // Ride started or resumed!
+                    try {
+                        karooSystem.dispatch(RequestBluetooth(extension))
+                    } catch (ignored: Exception) {}
+
                     if (autoStart) {
-                        // Start Rayo
-                        if (!bleManager.isConnected) {
-                            bleManager.connect(prefs.getString(PREF_MAC, null))
-                        }
-                        scope.launch {
-                            delay(1200)
+                        // Start Rayo using Scan-then-Connect
+                        val savedMac = prefs.getString(PREF_MAC, null)
+                        if (!savedMac.isNullOrEmpty() && !bleManager.isConnected) {
+                            bleManager.connect(savedMac, autoTurnOnAfterConnect = true)
+                        } else if (bleManager.isConnected) {
                             val defProfile = prefs.getInt(PREF_DEFAULT_PROFILE, 0)
                             bleManager.selectProfile(defProfile)
                             bleManager.setLight(true)
@@ -288,6 +296,9 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                     }
                     setAntLightsMode(LightMode.OFF.karooName)
                     showInRideAlert("Lichter: Aus", "Fahrt beendet")
+                    try {
+                        karooSystem.dispatch(ReleaseBluetooth(extension))
+                    } catch (ignored: Exception) {}
                 }
                 else -> {}
             }
@@ -378,7 +389,6 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 val deltaY = y - lastY
                 lastY = y
 
-                // Y-axis negative acceleration represents longitudinal forward deceleration (braking)
                 val decelerationG = -deltaY / 9.81f
                 val thresholdG = prefs.getFloat(PREF_BRAKE_THRESHOLD, 0.20f)
                 val now = System.currentTimeMillis()
@@ -386,7 +396,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 if (decelerationG >= thresholdG) {
                     if (continuousBrakeStartTime == 0L) {
                         continuousBrakeStartTime = now
-                    } else if (now - continuousBrakeStartTime >= 200L) { // 200ms continuous deceleration guard
+                    } else if (now - continuousBrakeStartTime >= 200L) {
                         if (!isBrakingActive) {
                             isBrakingActive = true
                             Log.d(TAG, "G-Brake triggered! Deceleration=$decelerationG g")
@@ -415,7 +425,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
     }
 
     private fun applyBrakeLight() {
-        if (isRadarThreatActive) return // Radar threat takes priority
+        if (isRadarThreatActive) return
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val brakeMode = prefs.getString(PREF_BRAKE_MODE, LightMode.STEADY_HIGH.karooName)
             ?: LightMode.STEADY_HIGH.karooName
@@ -487,14 +497,12 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         currentThreatLevel = threatLevel
 
         if (threatLevel > 0) {
-            // Vehicle approaching!
             threatHoldJob?.cancel()
             threatHoldJob = null
 
             if (!isRadarThreatActive) {
                 isRadarThreatActive = true
 
-                // Save current mode before threat
                 val primary = primaryAntLight
                 if (primary != null) {
                     val currentKarooMode = karooLightControl.actualModes.value[primary.id]
@@ -514,7 +522,6 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
                 updateAllAntDataFields()
             }
         } else {
-            // Road clear
             if (!isRadarThreatActive && threatHoldJob == null) return
             if (!isRadarThreatActive) return
 
@@ -541,32 +548,26 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         if (radarSimulatorJob != null) return
         radarSimulatorJob = scope.launch {
             while (isActive) {
-                // Clear road (8s)
                 onRadarThreatLevel(0)
                 delay(8000L)
                 if (!isActive) break
 
-                // 1 Car approaching - Yellow Level 1 (10s)
                 onRadarThreatLevel(1)
                 delay(10000L)
                 if (!isActive) break
 
-                // Fast Overtaking Car - Red Level 2 (6s)
                 onRadarThreatLevel(2)
                 delay(6000L)
                 if (!isActive) break
 
-                // 1-second gap
                 onRadarThreatLevel(0)
                 delay(1200L)
                 if (!isActive) break
 
-                // Tailgater - Red Level 2 (8s)
                 onRadarThreatLevel(2)
                 delay(8000L)
                 if (!isActive) break
 
-                // Clear road (10s)
                 onRadarThreatLevel(0)
                 delay(10000L)
             }
@@ -640,9 +641,22 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedMac = prefs.getString(PREF_MAC, null)
         if (!savedMac.isNullOrEmpty() && !bleManager.isConnected) {
+            try {
+                karooSystem.dispatch(RequestBluetooth(extension))
+            } catch (ignored: Exception) {}
             bleManager.connect(savedMac)
         }
         karooLightControl.bind()
+
+        intent?.action?.let { action ->
+            when (action) {
+                ACTION_TOGGLE_LIGHT -> toggleLight()
+                ACTION_CYCLE_PROFILE -> cycleProfile()
+                ACTION_TOGGLE_ANT_LIGHT -> toggleAntLight()
+                ACTION_CYCLE_ANT_MODE -> cycleAntMode()
+            }
+        }
+
         return START_STICKY
     }
 
@@ -692,17 +706,27 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
 
     // --- RAYO BLE IN-RIDE ACTIONS ---
 
-    fun connectBle(mac: String? = null) {
+    fun connectBle(mac: String? = null, autoTurnOn: Boolean = false) {
         val targetMac = mac ?: getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_MAC, null)
         if (!targetMac.isNullOrEmpty()) {
-            bleManager.connect(targetMac)
+            try {
+                karooSystem.dispatch(RequestBluetooth(extension))
+            } catch (ignored: Exception) {}
+            bleManager.connect(targetMac, autoTurnOnAfterConnect = autoTurnOn)
         }
     }
 
     fun toggleLight() {
+        val isGerman = Locale.getDefault().language.startsWith("de")
         if (!bleManager.isConnected) {
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            bleManager.connect(prefs.getString(PREF_MAC, null))
+            val savedMac = prefs.getString(PREF_MAC, null)
+            try {
+                karooSystem.dispatch(RequestBluetooth(extension))
+            } catch (ignored: Exception) {}
+            bleManager.connect(savedMac, autoTurnOnAfterConnect = true)
+            updateAllRayoDataFields()
+            showInRideAlert("Rayo: " + (if (isGerman) "Verbinde..." else "Connecting..."), if (isGerman) "Suche Rücklicht" else "Searching light")
             return
         }
         val newState = !bleManager.isLightOn
@@ -844,7 +868,10 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         )
         rv.setOnClickPendingIntent(R.id.btnToggleLight, pToggle)
 
-        if (!bleManager.isConnected) {
+        if (bleManager.isConnecting) {
+            rv.setTextViewText(R.id.btnToggleLight, if (isGerman) "VERBINDE..." else "CONNECTING...")
+            rv.setTextColor(R.id.btnToggleLight, Color.parseColor("#FFAA00"))
+        } else if (!bleManager.isConnected) {
             rv.setTextViewText(R.id.btnToggleLight, if (isGerman) "RAYO VERBINDEN" else "CONNECT RAYO")
             rv.setTextColor(R.id.btnToggleLight, Color.parseColor("#9E9EA7"))
         } else if (bleManager.isLightOn) {
@@ -1065,7 +1092,7 @@ class RayoExtension : KarooExtension("rayo", "1.0.0") {
         }
 
         bleManager.addListener(deviceListener)
-        bleManager.connect(uid)
+        connectBle(uid)
 
         if (bleManager.isConnected) {
             emitter.onNext(OnConnectionStatus(ConnectionStatus.CONNECTED))
